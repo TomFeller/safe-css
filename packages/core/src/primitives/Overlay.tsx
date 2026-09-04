@@ -41,14 +41,19 @@ const OverlayRoot = forwardRef(function Overlay(
   const Component = as || DEFAULT_TAG;
   const { diagnostics } = useTokenResolver("Overlay");
 
-  const finalStyle = mergeUnsafeCss({}, unsafeCss, diagnostics, "Overlay");
+  const { style: finalStyle, unsafeCssCount } = mergeUnsafeCss(
+    {},
+    unsafeCss,
+    diagnostics,
+    "Overlay",
+  );
 
   return (
     <Component
       ref={ref}
       className={cx("fw-Overlay", className)}
       style={finalStyle}
-      {...debugAttributes({ primitive: "Overlay" })}
+      {...debugAttributes({ primitive: "Overlay", unsafeCssCount })}
       {...rest}
     >
       {children}
@@ -113,14 +118,19 @@ const OverlayItem = forwardRef(function OverlayItem(
   style.zIndex = resolveToken("layer", layer, "layer");
   tokens.push(`layer.${layer}`);
 
-  const finalStyle = mergeUnsafeCss(style, unsafeCss, diagnostics, "Overlay.Item");
+  const { style: finalStyle, unsafeCssCount } = mergeUnsafeCss(
+    style,
+    unsafeCss,
+    diagnostics,
+    "Overlay.Item",
+  );
 
   return (
     <Component
       ref={ref}
       className={cx("fw-OverlayItem", overlayAnchorClassName(anchor, placement), className)}
       style={finalStyle}
-      {...debugAttributes({ primitive: "Overlay.Item", tokens })}
+      {...debugAttributes({ primitive: "Overlay.Item", tokens, unsafeCssCount })}
       {...rest}
     >
       {children}

@@ -86,14 +86,19 @@ export const Row = forwardRef(function Row(props: RowProps, ref: PolymorphicRef<
 
   if (grow) classes.push("fw-grow");
 
-  const finalStyle = mergeUnsafeCss(style, unsafeCss, diagnostics, "Row");
+  const { style: finalStyle, unsafeCssCount } = mergeUnsafeCss(
+    style,
+    unsafeCss,
+    diagnostics,
+    "Row",
+  );
 
   return (
     <Component
       ref={ref}
       className={cx(...classes, className)}
       style={finalStyle}
-      {...debugAttributes({ primitive: "Row", tokens })}
+      {...debugAttributes({ primitive: "Row", tokens, unsafeCssCount })}
       {...rest}
     >
       {children}

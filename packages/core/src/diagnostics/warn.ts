@@ -1,4 +1,6 @@
 import type { DiagnosticsMode } from "../theme/types";
+import { formatCssValue } from "./cssValueFormat";
+import { classifySuspiciousUnsafeCssProp } from "./unsafeCssHeuristics";
 
 const seen = new Set<string>();
 
@@ -52,33 +54,86 @@ export function warnGridConflict(mode: DiagnosticsMode): void {
   );
 }
 
-export function warnUnsafeCss(
+/**
+ * `unsafeCss` is intentionally allowed and does not warn merely for
+ * existing - that would train developers to ignore diagnostics entirely
+ * (see docs/architecture.md#unsafecss). Instead, only properties matching a
+ * known risky pattern (margin, raw z-index, layout properties a primitive
+ * already solves, arbitrary values where a token exists) produce a
+ * warning, one per suspicious property. Everything else - `cursor`,
+ * `font`, decorative `transform`s, and so on - stays silent. `unsafeCss`
+ * usage is still always visible in dev metadata regardless of whether
+ * anything here fires; see `debugAttributes`'s `unsafeCssCount`.
+ */
+export function warnSuspiciousUnsafeCss(
   mode: DiagnosticsMode,
   component: string,
   unsafeCss: Record<string, unknown>,
 ): void {
   if (mode !== "warn") return;
-  const entries = Object.entries(unsafeCss);
-  if (entries.length === 0) return;
 
-  const key = `unsafe-css:${component}:${entries.map(([k]) => k).join(",")}`;
-  const preview = entries
-    .map(([prop, value]) => `  ${prop}: ${typeof value === "number" ? `${value}px` : value};`)
+  for (const [prop, value] of Object.entries(unsafeCss)) {
+    const suspicion = classifySuspiciousUnsafeCssProp(prop, value);
+    if (!suspicion) continue;
+
+    warnOnce(
+      `unsafe-css:${component}:${prop}:${String(value)}`,
+      `Custom \`${prop}\` detected in unsafeCss on <${component}>: ${prop}: ${formatCssValue(prop, value)};\n\n` +
+        suspicion.reason,
+    );
+  }
+}
+
+interface VariantContribution {
+  group: string;
+  option: string;
+  value: unknown;
+}
+
+interface VariantCollision {
+  prop: string;
+  loser: VariantContribution;
+  winner: VariantContribution;
+}
+
+/**
+ * Warns when two *different* active variant groups on the same recipe
+ * instance both assign a value to the same underlying prop. Resolution is
+ * always deterministic (declaration order in `variants: {...}`, later wins -
+ * a plain object spread, same as everywhere else in this engine), so this
+ * never changes behavior; it just makes an easy-to-miss interaction visible.
+ */
+export function warnRecipeVariantCollision(
+  mode: DiagnosticsMode,
+  recipeName: string,
+  activeVariants: string[],
+  collisions: VariantCollision[],
+): void {
+  if (mode !== "warn" || collisions.length === 0) return;
+
+  const key =
+    `recipe-collision:${recipeName}:` +
+    collisions
+      .map(
+        (c) => `${c.prop}:${c.winner.group}=${c.winner.option}>${c.loser.group}=${c.loser.option}`,
+      )
+      .join(",");
+
+  const variantLines = activeVariants.map((v) => `  ${v.replace(":", '="')}"`).join("\n");
+  const propLines = collisions.map((c) => `  ${c.prop}`).join("\n");
+  const resolvedLines = collisions
+    .map((c) => `  ${c.prop}: ${formatCssValue(c.prop, c.winner.value)}`)
     .join("\n");
 
   warnOnce(
     key,
-    `Custom CSS detected on <${component}>:\n\n${preview}\n\n` +
-      `This bypasses the theme and framework guarantees. Consider a semantic token or prop instead.`,
+    `Recipe collision in <${recipeName}>:\n\n` +
+      `Active variants:\n${variantLines}\n\n` +
+      `Both assign:\n${propLines}\n\n` +
+      `Resolved value:\n${resolvedLines}\n\n` +
+      `Variant groups resolve in declaration order (the group declared later in ` +
+      `\`variants: {...}\` wins). If that's what you intended, no action is needed.`,
   );
-}
-
-export function warnConflictingProps(
-  mode: DiagnosticsMode,
-  component: string,
-  message: string,
-): void {
-  warnIfEnabled(mode, `conflict:${component}:${message}`, message);
 }
 
 /** Test-only: clears the warn-once cache so tests don't leak state into each other. */

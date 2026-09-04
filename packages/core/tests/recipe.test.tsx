@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { createRef } from "react";
+import { fireEvent } from "@testing-library/react";
 import { Box, Stack, defineRecipe } from "../src";
 import { renderWithTheme } from "./test-utils";
 
@@ -116,5 +118,130 @@ describe("defineRecipe", () => {
     const el = getByTestId("el");
     expect(el.getAttribute("data-fw-recipe")).toBe("Card");
     expect(el.getAttribute("data-fw-variant")).toBe("tone:raised");
+  });
+
+  it("always sets data-fw-recipe, even with no active variant, since name is required", () => {
+    const Card = defineRecipe(Box, { name: "Card" });
+    const { getByTestId } = renderWithTheme(<Card data-testid="el" />);
+    expect(getByTestId("el").getAttribute("data-fw-recipe")).toBe("Card");
+    expect(getByTestId("el").hasAttribute("data-fw-variant")).toBe(false);
+  });
+});
+
+describe("defineRecipe: base.as changes the element and its DOM prop typing", () => {
+  it("renders the pinned element and forwards element-specific DOM props/events", () => {
+    const ButtonLike = defineRecipe(Box, {
+      name: "ButtonLike",
+      base: { as: "button", padding: "control" },
+    });
+
+    const onClick = vi.fn();
+    const { getByTestId } = renderWithTheme(
+      <ButtonLike data-testid="el" type="submit" disabled={false} onClick={onClick}>
+        Go
+      </ButtonLike>,
+    );
+
+    const el = getByTestId("el") as HTMLButtonElement;
+    expect(el.tagName).toBe("BUTTON");
+    expect(el.type).toBe("submit");
+    fireEvent.click(el);
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("forwards a ref typed to the pinned element", () => {
+    const ButtonLike = defineRecipe(Box, {
+      name: "ButtonLike",
+      base: { as: "button" },
+    });
+    const ref = createRef<HTMLButtonElement>();
+    renderWithTheme(<ButtonLike ref={ref}>Go</ButtonLike>);
+    expect(ref.current).toBeInstanceOf(HTMLButtonElement);
+  });
+});
+
+describe("defineRecipe: variant collision diagnostics", () => {
+  it("warns when two active variant groups assign different values to the same prop", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const Card = defineRecipe(Box, {
+      name: "Card",
+      variants: {
+        size: { large: { padding: "section" } },
+        density: { compact: { padding: "control" } },
+      },
+    });
+
+    const { getByTestId } = renderWithTheme(
+      <Card data-testid="el" size="large" density="compact" />,
+    );
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    const message = warn.mock.calls[0]?.[0] as string;
+    expect(message).toContain("Card");
+    expect(message).toContain("padding");
+    expect(message).toContain('size="large"');
+    expect(message).toContain('density="compact"');
+
+    // Resolution is still fully deterministic - the later-declared group
+    // (density) wins, exactly as documented.
+    expect(getByTestId("el").style.padding).toBe("var(--fw-space-control)");
+
+    warn.mockRestore();
+  });
+
+  it("does not warn when only one of the colliding groups is active", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const Card = defineRecipe(Box, {
+      name: "Card",
+      variants: {
+        size: { large: { padding: "section" } },
+        density: { compact: { padding: "control" } },
+      },
+    });
+    renderWithTheme(<Card size="large" />);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("does not warn when both active variants assign the exact same value", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const Card = defineRecipe(Box, {
+      name: "Card",
+      variants: {
+        size: { large: { padding: "section" } },
+        density: { roomy: { padding: "section" } },
+      },
+    });
+    renderWithTheme(<Card size="large" density="roomy" />);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("does not warn about unrelated props two variants happen to both set independently", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const Card = defineRecipe(Box, {
+      name: "Card",
+      variants: {
+        tone: { raised: { shadow: "raised" } },
+        size: { large: { padding: "section" } },
+      },
+    });
+    renderWithTheme(<Card tone="raised" size="large" />);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("does not warn in production diagnostics mode", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const Card = defineRecipe(Box, {
+      name: "Card",
+      variants: {
+        size: { large: { padding: "section" } },
+        density: { compact: { padding: "control" } },
+      },
+    });
+    renderWithTheme(<Card size="large" density="compact" />, { diagnostics: "off" });
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 });

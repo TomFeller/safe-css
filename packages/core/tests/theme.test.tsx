@@ -146,3 +146,37 @@ describe("missing ThemeProvider", () => {
     warn.mockRestore();
   });
 });
+
+describe("token-to-token dependencies", () => {
+  it("border.subtle references --fw-color-border rather than duplicating its literal value", () => {
+    // This is the exact duplication pattern the token dependency model
+    // exists to avoid: `colors.border` and `border.subtle` used to be two
+    // independently-literal values representing the *same* design decision.
+    expect(defaultThemeInternal.border.subtle).toContain("var(--fw-color-border)");
+  });
+
+  it("changing the base color updates the dependent border style, because both live on the same DOM node", () => {
+    const theme = createTheme({ colors: { border: "#ff00ff" } });
+    const { container } = render(
+      <ThemeProvider theme={theme}>
+        <Box data-testid="el" border="subtle" />
+      </ThemeProvider>,
+    );
+
+    const root = container.querySelector("[data-fw-theme-root]") as HTMLElement;
+    expect(root.style.getPropertyValue("--fw-color-border")).toBe("#ff00ff");
+    // border.subtle's *value* is still "1px solid var(--fw-color-border)" -
+    // unchanged - but that reference now resolves to the new color, because
+    // CSS custom properties resolve lazily against whatever is currently
+    // defined, not at theme-authoring time.
+    expect(root.style.getPropertyValue("--fw-border-subtle")).toBe(
+      "1px solid var(--fw-color-border)",
+    );
+  });
+
+  it("border.strong is a deliberately independent value, not tied to colors.border", () => {
+    // Not every pair of similar-looking tokens should be coupled - see
+    // docs/architecture.md#token-dependencies for why `strong` stays literal.
+    expect(defaultThemeInternal.border.strong).not.toContain("var(--fw-color-border)");
+  });
+});

@@ -17,15 +17,19 @@ export function Sidebar({
     <Stack as="nav" aria-label="Primary" width="sidebar" height="full">
       <Box padding="card" border="subtle">
         <Row align="center" gap="control">
+          {/* Centering, like Avatar, via a nested Stack rather than
+              `unsafeCss={{ display: "grid" }}` - `display` already has a
+              framework answer, so there's no need to bypass it here. */}
           <Box
             width="control"
             height="control"
             radius="control"
             background="action"
             color="surface"
-            unsafeCss={{ display: "grid", placeItems: "center", fontWeight: 700 }}
           >
-            sc
+            <Stack align="center" justify="center" height="full" unsafeCss={{ fontWeight: 700 }}>
+              sc
+            </Stack>
           </Box>
           <strong>safe-css</strong>
         </Row>

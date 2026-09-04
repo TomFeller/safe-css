@@ -64,14 +64,19 @@ export const Sticky = forwardRef(function Sticky(
   style.zIndex = resolveToken("layer", layer, "layer");
   tokens.push(`layer.${layer}`);
 
-  const finalStyle = mergeUnsafeCss(style, unsafeCss, diagnostics, "Sticky");
+  const { style: finalStyle, unsafeCssCount } = mergeUnsafeCss(
+    style,
+    unsafeCss,
+    diagnostics,
+    "Sticky",
+  );
 
   return (
     <Component
       ref={ref}
       className={cx("fw-Sticky", className)}
       style={finalStyle}
-      {...debugAttributes({ primitive: "Sticky", tokens })}
+      {...debugAttributes({ primitive: "Sticky", tokens, unsafeCssCount })}
       {...rest}
     >
       {children}

@@ -69,14 +69,19 @@ export const ScrollArea = forwardRef(function ScrollArea(
     grow && "fw-grow",
   ];
 
-  const finalStyle = mergeUnsafeCss({}, unsafeCss, diagnostics, "ScrollArea");
+  const { style: finalStyle, unsafeCssCount } = mergeUnsafeCss(
+    {},
+    unsafeCss,
+    diagnostics,
+    "ScrollArea",
+  );
 
   return (
     <Component
       ref={ref}
       className={cx(...classes, className)}
       style={finalStyle}
-      {...debugAttributes({ primitive: "ScrollArea" })}
+      {...debugAttributes({ primitive: "ScrollArea", unsafeCssCount })}
       {...rest}
     >
       {children}

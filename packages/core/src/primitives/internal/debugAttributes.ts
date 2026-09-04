@@ -5,16 +5,22 @@ export interface DebugMeta {
   recipe?: string;
   variant?: string;
   tokens?: string[];
+  /** Number of properties set via `unsafeCss` on this element, if any. */
+  unsafeCssCount?: number;
 }
 
 /**
  * Dev-only `data-fw-*` attributes describing which primitive, recipe,
- * variant, and theme tokens produced an element. This is intentionally the
- * entire "traceability" surface for v0.1: it costs nothing at runtime in
- * production (the attributes are simply omitted) and is enough to inspect an
- * element's styling provenance in devtools today, while giving a future
- * "blast radius" tool (see docs/architecture.md) a real data source to read
- * without any redesign.
+ * variant, theme tokens, and `unsafeCss` usage produced an element. This is
+ * intentionally the entire "traceability" surface for v0.1: it costs nothing
+ * at runtime in production (the attributes are simply omitted) and is enough
+ * to inspect an element's styling provenance in devtools today, while giving
+ * a future "blast radius" tool (see docs/architecture.md) a real data source
+ * to read without any redesign.
+ *
+ * Centralized here rather than reimplemented per primitive, so the metadata
+ * model (which attributes exist, when they're included) has exactly one
+ * definition. Every primitive calls this the same way, right before render.
  */
 export function debugAttributes(meta: DebugMeta): Record<string, string> {
   if (!isDevelopmentBuild()) return {};
@@ -26,6 +32,9 @@ export function debugAttributes(meta: DebugMeta): Record<string, string> {
   if (meta.variant) attrs["data-fw-variant"] = meta.variant;
   if (meta.tokens && meta.tokens.length > 0) {
     attrs["data-fw-tokens"] = meta.tokens.join(" ");
+  }
+  if (meta.unsafeCssCount) {
+    attrs["data-fw-unsafe-css"] = String(meta.unsafeCssCount);
   }
   return attrs;
 }

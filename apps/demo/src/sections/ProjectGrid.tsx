@@ -83,7 +83,10 @@ export function ProjectGrid() {
       <Stack gap="section">
         <Row gap="control" align="center" justify="between" wrap="when-needed">
           <Stack gap="none">
-            <Box as="h1" unsafeCss={{ fontSize: 20, margin: 0 }}>
+            {/* No `margin: 0` needed here: every safe-css primitive - including
+                `as="h1"` - is scoped-normalized to zero margin. See
+                docs/architecture.md#scoped-normalization. */}
+            <Box as="h1" unsafeCss={{ fontSize: 20 }}>
               Active projects
             </Box>
             <Box color="textMuted">Everything your team is shipping this quarter.</Box>

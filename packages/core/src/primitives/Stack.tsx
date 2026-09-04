@@ -79,14 +79,19 @@ export const Stack = forwardRef(function Stack(
 
   if (grow) classes.push("fw-grow");
 
-  const finalStyle = mergeUnsafeCss(style, unsafeCss, diagnostics, "Stack");
+  const { style: finalStyle, unsafeCssCount } = mergeUnsafeCss(
+    style,
+    unsafeCss,
+    diagnostics,
+    "Stack",
+  );
 
   return (
     <Component
       ref={ref}
       className={cx(...classes, className)}
       style={finalStyle}
-      {...debugAttributes({ primitive: "Stack", tokens })}
+      {...debugAttributes({ primitive: "Stack", tokens, unsafeCssCount })}
       {...rest}
     >
       {children}

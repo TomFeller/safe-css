@@ -14,6 +14,16 @@
  * propagates without regenerating any CSS. This file only ever encodes the
  * fixed, finite vocabulary of *structural* choices each primitive exposes
  * (flex direction, alignment keywords, overflow behavior, position scheme).
+ *
+ * `margin: 0` here is a *scoped* normalization, not a global reset: it only
+ * ever applies to elements safe-css itself rendered (every primitive carries
+ * one of these classes). A plain `<h1>` an application renders directly is
+ * untouched - there is no bare `h1 { margin: 0 }` element selector anywhere
+ * in this file. This exists because the framework's spacing model says
+ * parents own spacing between children via `gap`, never a child's own
+ * margin - and a browser's default UA stylesheet giving `<h1>`/`<p>`/etc.
+ * their own margin would silently violate that promise the moment `as="h1"`
+ * is used. See docs/architecture.md#scoped-normalization.
  */
 
 .fw-Box,
@@ -25,6 +35,7 @@
 .fw-Overlay,
 .fw-OverlayItem {
   box-sizing: border-box;
+  margin: 0;
 }
 
 /* Stack: vertical flex */

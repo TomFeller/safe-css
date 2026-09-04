@@ -46,8 +46,14 @@ export const defaultTheme: Theme = {
     control: "40px",
   },
 
+  // `border.subtle` intentionally references `--fw-color-border` rather than
+  // repeating its literal value: they represent the *same* design decision
+  // ("what color is a subtle border"), so changing `colors.border` must
+  // change `border.subtle` too - see docs/architecture.md#token-dependencies.
+  // `border.strong` is a deliberately independent decision (a visibly
+  // stronger, unrelated shade for emphasis), so it stays a literal value.
   border: {
-    subtle: "1px solid #e5e7eb",
+    subtle: "1px solid var(--fw-color-border)",
     strong: "1px solid #9ca3af",
   },
 

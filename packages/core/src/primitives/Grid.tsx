@@ -93,14 +93,19 @@ export const Grid = forwardRef(function Grid(props: GridProps, ref: PolymorphicR
     classes.push(`fw-grid-cols-${columns}`);
   }
 
-  const finalStyle = mergeUnsafeCss(style, unsafeCss, diagnostics, "Grid");
+  const { style: finalStyle, unsafeCssCount } = mergeUnsafeCss(
+    style,
+    unsafeCss,
+    diagnostics,
+    "Grid",
+  );
 
   return (
     <Component
       ref={ref}
       className={cx(...classes, className)}
       style={finalStyle}
-      {...debugAttributes({ primitive: "Grid", tokens })}
+      {...debugAttributes({ primitive: "Grid", tokens, unsafeCssCount })}
       {...rest}
     >
       {children}

@@ -50,12 +50,23 @@ export const DEFAULT_TAG = "div" as const;
  * checking on the resulting recipe. Adding the concrete last signature gives
  * inference something non-generic to resolve against, which TypeScript
  * prefers - see the recipe engine's tests for the regression this guards.
+ *
+ * `__ownProps` is a phantom marker - it never exists at runtime (no
+ * primitive ever sets it) and its value is never read, only its *type*. It
+ * lets `defineRecipe` recover a primitive's own semantic props (e.g.
+ * `BoxOwnProps`) independent of which tag `Default` happens to be pinned to,
+ * which in turn is what lets a recipe that changes its base element (e.g.
+ * `defineRecipe(Box, { base: { as: "button" } })`) still get accurate,
+ * element-specific DOM prop types instead of always being typed as a `div`.
+ * See `recipes/defineRecipe.ts`'s `OwnPropsOf`.
  */
-export type PolymorphicComponent<Own, Default extends ElementType = typeof DEFAULT_TAG> = (<
+export type PolymorphicComponent<Own, Default extends ElementType = typeof DEFAULT_TAG> = ((<
   E extends ElementType = Default,
 >(
   props: PolymorphicProps<E, Own> & { ref?: PolymorphicRef<E> },
 ) => ReactElement | null) &
   ((
     props: PolymorphicProps<Default, Own> & { ref?: PolymorphicRef<Default> },
-  ) => ReactElement | null);
+  ) => ReactElement | null)) & {
+  readonly __ownProps?: Own;
+};

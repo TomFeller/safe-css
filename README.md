@@ -55,6 +55,7 @@ import {
 const theme = createTheme(); // built-in defaults; see "Theme" below to customize
 
 const Card = defineRecipe(Box, {
+  name: "Card", // required - see "Recipes" below
   base: { padding: "card", radius: "card", background: "surface" },
   variants: { tone: { default: { border: "subtle" }, raised: { shadow: "raised" } } },
   defaultVariants: { tone: "default" },
@@ -117,6 +118,21 @@ declare module "@safe-css/core" {
   }
 }
 ```
+
+Declaration merging only changes what TypeScript _accepts_ — it can't guarantee the _runtime_ theme actually defines `xl` (types don't exist at runtime, so nothing can mechanically check that for you; see [`docs/architecture.md#custom-tokens`](docs/architecture.md#custom-tokens) for exactly why). Two things keep this safe in practice:
+
+1. **A runtime safety net that's always on.** If `xl` is ever used but not actually present in the active theme, development builds warn with the same "Unknown token" message as any other invalid token — this isn't a special case, it's the same check every token goes through.
+2. **A stricter, opt-in authoring pattern for teams that add real custom tokens.** Define your full theme as one object checked with `satisfies Theme` (not the partial `createTheme({...})` shortcut) and TypeScript _will_ require every augmented token to have a value:
+   ```ts
+   const myTheme = {
+     colors: { /* ... */ },
+     space: { /* ...built-ins... */, xl: "40px" }, // required here - satisfies checks completeness
+     // ...every other category...
+   } satisfies Theme;
+
+   const theme = createTheme(myTheme);
+   ```
+   Keep the `declare module` augmentation and this object in the same file, so there's exactly one place to update when adding a token.
 
 ## 6. Box
 
@@ -216,6 +232,7 @@ Positioning relative to another element, without ever writing `position: relativ
 
 ```ts
 const Card = defineRecipe(Box, {
+  name: "Card", // required - a stable, developer-facing identifier for traceability
   base: { padding: "card", radius: "card", background: "surface" },
   variants: {
     tone: {
@@ -230,7 +247,27 @@ const Card = defineRecipe(Box, {
 <Card tone="raised" padding="section" />  // instance props still win
 ```
 
-A recipe may only set props the underlying primitive already supports, cannot introduce selectors (`"& > *"`, `".foo"`, etc. are not part of this API), and there is no compound-variant engine in v0.1. See [`docs/architecture.md`](docs/architecture.md#recipes) for the one narrow TypeScript limitation this design has (variant _values_ aren't always compile-time-checked against the primitive's props the way `base` is — a documented, deliberate trade-off, not an oversight).
+`name` is required (not optional) as of v0.1.1: an unnamed recipe can't show up in dev metadata or, later, in blast-radius analysis ("which recipes does this token change affect").
+
+A recipe may only set props the underlying primitive already supports, cannot introduce selectors (`"& > *"`, `".foo"`, etc. are not part of this API), and there is no compound-variant engine in v0.1. See [`docs/architecture.md`](docs/architecture.md#recipes) for the one narrow TypeScript limitation this design has (variant _values_ aren't always compile-time-checked against the primitive's props the way `base` is — a documented, deliberate trade-off, not an oversight; teams that want the guarantee back can opt in with `variants: {...} satisfies RecipeVariantMap<BoxProps>`).
+
+Setting `as` inside `base` changes the recipe's element _and_ its DOM prop typing - `defineRecipe(Box, { name: "ButtonLike", base: { as: "button" } })` produces a component that accepts `type`, `disabled`, and a correctly-typed `onClick`, not just `div` props.
+
+If two different variant groups are both active and both set the same underlying prop (e.g. a `size` variant and a `density` variant both setting `padding`), resolution is always deterministic — the group declared later in `variants: {...}` wins, the same left-to-right rule as any other merge in this engine — and development builds warn about the collision so it's never a surprise:
+
+```text
+Recipe collision in <Card>:
+
+Active variants:
+  size="large"
+  density="compact"
+
+Both assign:
+  padding
+
+Resolved value:
+  control
+```
 
 ## 14. unsafeCss
 
@@ -240,23 +277,36 @@ The escape hatch, and it's a real one:
 <Box background="surface" unsafeCss={{ background: "red" }} /> // unsafeCss wins
 ```
 
-It's named `unsafeCss`, not `css`, on purpose: past this point the framework can no longer guarantee scoping, token traceability, or predictability for that element. It's always available, always fully supported, and always flagged in development diagnostics so it stays visible during code review rather than hiding inside a component.
+It's named `unsafeCss`, not `css`, on purpose: past this point the framework can no longer guarantee scoping, token traceability, or predictability for that element.
+
+`unsafeCss` is always fully supported and its use is always visible in dev metadata (`data-fw-unsafe-css="<count>"`), but it does **not** produce a console warning merely for existing — `unsafeCss={{ cursor: "pointer", font: "inherit" }}` stays silent. Warnings are reserved for patterns that usually mean "I reached for `unsafeCss` when the framework already has an answer": margin properties, raw z-index, layout/positioning properties a primitive already solves (`display`, `position`, `overflow`, ...), and arbitrary values where a semantic token exists (`padding: 13`, `color: "#ff0000"`). Each warning names the specific property and points at the framework alternative:
+
+```text
+Custom `marginLeft` detected in unsafeCss on <Box>: marginLeft: 17px;
+
+Spacing between siblings should normally be controlled by the parent layout using `gap`, not a child's own margin.
+```
+
+This is a small, first-pass heuristic, not a CSS linter — see [`docs/architecture.md#unsafecss`](docs/architecture.md#unsafecss) for the exact rules and the reasoning behind "warn on suspicious, not on all."
 
 ## 15. Core rules
 
-1. **No public margin props.** Spacing between siblings belongs to the parent (`gap`), never the child (`margin*`).
+1. **No public margin props.** Spacing between siblings belongs to the parent (`gap`), never the child (`margin*`) — and every safe-css primitive is itself scoped-normalized to `margin: 0`, so this holds even for `as="h1"`/`as="p"`/etc. rendering an element that would otherwise carry a browser default margin. See [`docs/architecture.md#scoped-normalization`](docs/architecture.md#scoped-normalization).
 2. **No generic CSS props.** No `display`, `position`, `overflow`, `zIndex`, `transform`, `flexDirection`, etc. Those are behaviors with their own primitive, or `unsafeCss`.
 3. **Tokens, not values.** Every spacing/color/radius/size/border/shadow/layer prop takes a theme token name.
 4. **Deterministic precedence.** `primitive defaults < recipe base < recipe variant < instance props < unsafeCss`, always — never CSS specificity.
 5. **Scoped by construction.** Generated styles never use descendant selectors, never style siblings, never depend on DOM location.
-6. **No global reset.** Importing safe-css does not restyle `body`, `button`, `h1`, or anything else you didn't render through it.
+6. **No global reset.** Importing safe-css does not restyle `body`, `button`, `h1`, or anything else you didn't render through it — the scoped `margin: 0` above only ever applies to elements a safe-css primitive itself rendered.
+7. **Composable tokens.** When two tokens represent the same design decision (e.g. a border's color), the dependent one references the other's CSS variable rather than duplicating its value, so changing the source token changes everything that depends on it. See [`docs/architecture.md#token-dependencies`](docs/architecture.md#token-dependencies).
 
-## 16. v0.1 limitations
+## 16. v0.1.1 limitations
 
-- **Fixed default token categories.** `colors`, `space`, `radius`, `size`, `border`, `shadow`, `layer` are the built-in shape; extra tokens need a small TypeScript declaration-merge (see [Theme](#5-theme)), not a fully generic per-app token schema.
-- **Recipe variant values aren't always compile-time-validated** against the underlying primitive's props (only `base` reliably is) — a deliberate trade-off documented in [`docs/architecture.md`](docs/architecture.md#recipes).
+- **Fixed default token categories.** `colors`, `space`, `radius`, `size`, `border`, `shadow`, `layer` are the built-in shape; extra tokens need a small TypeScript declaration-merge (see [Theme](#5-theme)), not a fully generic per-app token schema. TypeScript accepting an augmented token name doesn't guarantee the runtime theme defines it — a `satisfies Theme`-checked custom theme closes that gap for teams that want it; the always-on runtime warning is the fallback for everyone else.
+- **Recipe variant values aren't always compile-time-validated** against the underlying primitive's props (only `base` reliably is) — a deliberate trade-off documented in [`docs/architecture.md`](docs/architecture.md#recipes). Opt in with `satisfies RecipeVariantMap<P>` for the stricter check.
 - **No compound variants** in `defineRecipe`.
-- **No blast-radius UI.** The metadata to build one (`data-fw-primitive`, `data-fw-recipe`, `data-fw-variant`, `data-fw-tokens`, dev-only) is there; the analysis/visualization tool is not — see [`docs/architecture.md`](docs/architecture.md#future-traceability).
+- **No blast-radius UI.** The metadata to build one (`data-fw-primitive`, `data-fw-recipe`, `data-fw-variant`, `data-fw-tokens`, `data-fw-unsafe-css`, dev-only) is there; the analysis/visualization tool is not — see [`docs/architecture.md`](docs/architecture.md#future-traceability).
+- **No portal-aware primitives yet.** Modal/Tooltip/Popover/Toast are still out of scope, and CSS custom-property inheritance doesn't cross a React portal boundary into `document.body`. The architecture is prepared for this (see [`docs/architecture.md#portals`](docs/architecture.md#portals)) but nothing consumes it yet.
+- **`unsafeCss`'s suspicious-pattern detection is a small, fixed heuristic, not a linter.** It catches known risky patterns (margin, raw z-index, layout bypasses, arbitrary values with a token equivalent); it does not attempt general CSS analysis.
 - **No component libraries.** Buttons, inputs, selects, modals, tabs, tooltips, forms, tables, animation, icons are explicitly out of scope — safe-css is a layout/theming layer, not a UI kit.
 
 ---

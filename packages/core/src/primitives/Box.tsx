@@ -140,14 +140,19 @@ export const Box = forwardRef(function Box(props: BoxProps, ref: PolymorphicRef<
   if (shrink === true) classes.push("fw-shrink");
   if (shrink === false) classes.push("fw-shrink-none");
 
-  const finalStyle = mergeUnsafeCss(style, unsafeCss, diagnostics, "Box");
+  const { style: finalStyle, unsafeCssCount } = mergeUnsafeCss(
+    style,
+    unsafeCss,
+    diagnostics,
+    "Box",
+  );
 
   return (
     <Component
       ref={ref}
       className={cx(...classes, className)}
       style={finalStyle}
-      {...debugAttributes({ primitive: "Box", tokens })}
+      {...debugAttributes({ primitive: "Box", tokens, unsafeCssCount })}
       {...rest}
     >
       {children}
