@@ -1,7 +1,7 @@
 {
   "name": "safe-css-workspace",
   "private": true,
-  "version": "0.1.2",
+  "version": "0.2.1",
   "type": "module",
   "workspaces": [
     "packages/*",
@@ -9,11 +9,12 @@
   ],
   "scripts": {
     "dev": "npm run dev --workspace apps/demo",
-    "build": "npm run build --workspace @safe-css/core && npm run build --workspace demo",
+    "build": "npm run build --workspace @safe-css/core && npm run build --workspace @safe-css/inspector && npm run build --workspace demo",
     "build:core": "npm run build --workspace @safe-css/core",
+    "build:inspector": "npm run build --workspace @safe-css/inspector",
     "build:demo": "npm run build --workspace demo",
-    "test": "npm run test --workspace @safe-css/core",
-    "typecheck": "npm run typecheck --workspace @safe-css/core && npm run typecheck --workspace demo",
+    "test": "npm run test --workspace @safe-css/core && npm run test --workspace @safe-css/inspector",
+    "typecheck": "npm run typecheck --workspace @safe-css/core && npm run typecheck --workspace @safe-css/inspector && npm run typecheck --workspace demo",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

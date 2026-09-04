@@ -1,6 +1,6 @@
 # Architecture
 
-This document explains the internal design of `@safe-css/core` and the reasoning behind the choices that aren't obvious from reading the code. It assumes you've read the root [README](../README.md) for the product framing; this is the "how and why," not the "what."
+This document explains the internal design of `@safe-css/core` (and, from v0.2, `@safe-css/inspector`) and the reasoning behind the choices that aren't obvious from reading the code. It assumes you've read the root [README](../README.md) for the product framing; this is the "how and why," not the "what."
 
 ## Contents
 
@@ -22,6 +22,7 @@ This document explains the internal design of `@safe-css/core` and the reasoning
 - [RTL / Overlay](#rtl--overlay)
 - [Portals](#portals)
 - [Future traceability ("blast radius")](#future-traceability)
+- [Inspector](#inspector)
 - [Non-goals](#non-goals)
 
 ## Styling engine
@@ -243,6 +244,115 @@ A consumer passing a reserved attribute directly - `<Box data-fw-primitive="Bana
 
 One consequence worth stating explicitly: in a **production** build, safe-css doesn't compute any `data-fw-*` metadata at all (`debugAttributes`'s `isDevelopmentBuild()` early return - see [Future traceability](#future-traceability)), so there is nothing for a consumer-supplied `data-fw-primitive` to collide _with_, and it passes straight through to the DOM untouched, exactly like any other custom `data-*` attribute would. The "reserved, framework-always-wins" guarantee is specifically a development-time concern, matching where the metadata it protects actually exists - it was never meant to police what attributes a production app's markup may contain. `tests/productionDiagnostics.test.tsx` asserts this precisely (both "no warning" and "the consumer's own value passes through unmodified") rather than assuming production behaves like development with the volume turned down.
 
+## Inspector
+
+`@safe-css/inspector` (introduced in v0.2, hardened in v0.2.1) is a separate, read-only, development-only package that answers "why does this element look the way it does?" by reading exactly the metadata described in [Future traceability](#future-traceability) directly out of the live DOM. It is documented separately here because its defining architectural property is what it does _not_ depend on:
+
+- **No import from `@safe-css/core`.** The Inspector's `package.json` declares Core as a `peerDependency` pinned to `>=0.1.2 <0.2.0` (see [Core compatibility](#core-compatibility) below) rather than `*`; nothing in its source imports from it. Everything it knows comes from `data-fw-primitive`, `data-fw-recipe`, `data-fw-variant`, `data-fw-tokens`, `data-fw-unsafe-css` attributes and `--fw-*` CSS custom properties on the rendered DOM - the same contract [Future traceability](#future-traceability) describes as reserved and stable.
+- **No React Context coupling.** The Inspector doesn't read `ThemeContext` or `ThemeMetaContext`; it has no way to, and doesn't need to - every value it shows is already sitting on the DOM as an inline style or attribute by the time it runs.
+- **Core is unmodified.** Building the Inspector required zero changes to `packages/core`. The DOM/CSS contract above was already complete and sufficient.
+
+This is a real, load-bearing design constraint, not an incidental one: it's what makes the Inspector legitimately independent tooling rather than a second, hidden integration surface with Core's internals that could drift out of sync silently.
+
+### Core compatibility
+
+Not importing from Core doesn't mean any Core version will do: the Inspector still depends on a specific, stabilized _DOM output_ contract - the exact `data-fw-*` attribute names and `--fw-*` CSS variable naming convention Core v0.1.2 shipped (see [Future traceability](#future-traceability) and [Theme token model](#theme-token-model)). A `@safe-css/core: "*"` peer range (as originally published) would happily accept a hypothetical future Core major that renamed or restructured that contract, and the Inspector would fail confusingly at runtime rather than at install time. As of v0.2.1 the peer range is `>=0.1.2 <0.2.0`: any 0.1.x Core (the contract is stable across patches within that line) satisfies it, and npm's peer dependency resolution surfaces a clear warning if a consuming app's Core version falls outside it, rather than the Inspector silently misreading a changed contract. This is a peer dependency, not a regular one, specifically so a consuming app keeps using its own single copy of Core - the Inspector never bundles or duplicates it.
+
+### Pure inspection layer
+
+`packages/inspector/src/inspection`, `tokens`, and `unsafe` implement DOM reading as plain, framework-agnostic functions returning a serializable model (`InspectedElement`, `InspectedToken`, `DependencyTreeNode`, `UnsafeCssInfo` - see `src/types.ts`), entirely separate from the React/UI layer that renders them. Two things fall out of that split:
+
+- Every one of these functions is unit-testable against a plain DOM fixture, with no React rendering involved.
+- A future tool (the blast-radius analysis this section's parent section anticipates) can reuse this exact layer without touching any UI code.
+
+**Token values.** `tokens/tokenValue.ts` resolves a token's value by walking `element.style`, then `element.parentElement.style`, and so on, looking for the first ancestor that defines the `--fw-*` custom property directly (`findNearestVariableDefinition`) - this is exactly how CSS custom property inheritance itself works, so it automatically respects nested `ThemeProvider`s (see [Nested themes](#nested-themes)) without the Inspector needing any special-case logic for them. `resolveTokenValue` then recursively substitutes any `var(--fw-...)` references in that raw value, the same way a browser would, with a `seen`-set guard against cycles. This substitution is the _primary_ resolution mechanism, not a fallback to `getComputedStyle`: resolving safe-css's own small `var()` syntax directly is both simpler and reliably testable in `jsdom`, where custom-property computed-style resolution is inconsistent.
+
+**Dependency trees.** `tokens/dependencies.ts` builds the "Token dependencies" panel section by recursively finding every `--fw-*` variable referenced inside a token's raw value (`extractFwVariableReferences`) and repeating that for each one, threading a `seen` set through the recursion exactly like `resolveTokenValue` does - a variable that reappears in its own ancestry is reported as `cycle: true` and that branch stops there, so a malformed theme can never hang or crash the panel. This only ever answers "what does this token depend on"; the reverse question ("what depends on this token", needed for real blast-radius analysis) is out of scope - see [Non-goals](#non-goals).
+
+**Property mapping.** For each token, the Inspector reports which of the selected element's own inline-style properties reference that token's CSS variable. This parses every `var(--fw-...)` reference out of each property's value with the same reference extractor dependency-tree building uses (`extractFwVariableReferences`), then checks for an **exact** match among them - most tokens are a property's entire value (`color: var(--fw-color-text)`), but some are embedded in a compound value (`Grid`'s `minItemWidth` token lives inside `grid-template-columns: repeat(auto-fill, minmax(var(--fw-size-...), 1fr))`), and a property can reference more than one token. **v0.2 matched by plain text substring instead** (`value.includes(cssVariable)`), which meant `--fw-space-card` matched inside `--fw-space-card-lg`'s own reference text - any property actually using the `-lg` token got wrongly attributed to the un-suffixed one too. Reusing the real reference parser instead of ad hoc string matching rules that out categorically, not just for the one case that surfaced it; fixed in v0.2.1. When nothing matches, the panel says "Unknown" rather than guessing - this is still a deliberately conservative, best-effort mapping (it can't see a property set via a stylesheet or class rather than inline `style`), not a CSS parser.
+
+**unsafeCss detection.** `unsafe/detectUnsafeCss.ts` scans an element's inline style for declarations that are neither token-driven (`var(--fw-...)`) nor a small, exact allowlist of literal values primitives themselves author directly (`"none"`, `"50%"`, centering `transform`s, etc. - e.g. `Box`'s `border="none"` or `Overlay`'s center-anchor insets). `data-fw-unsafe-css`'s count is always the source of truth, since the Inspector can never see _which layer_ authored a given declaration, only its resulting value; the detected list is a best-effort explanation of which declarations plausibly contributed to that count, and the panel shows a plain "this is best-effort and may be incomplete" note whenever the two disagree, rather than presenting an uncertain list as definitive.
+
+### UI: Shadow DOM isolation, no safe-css primitives
+
+The Inspector's panel, launcher, and highlight overlay are built with plain HTML elements and a single inlined stylesheet (`ui/styles.ts`), rendered into a Shadow DOM root created imperatively in `internal/inspectorRoot.ts` and mounted via `createPortal`. Two requirements drove this:
+
+- **The tool must be independent of the framework it inspects.** Using safe-css primitives to build the Inspector's own UI would mean the Inspector could never inspect itself, and would tie its own rendering to Core's runtime behavior. It uses neither.
+- **Style isolation in both directions.** Shadow DOM keeps the host app's CSS from leaking into the panel and the panel's CSS from leaking into the host app, without needing any CSS naming convention (`fw-inspector-*` class names exist for readability, not scoping - the shadow boundary is what actually scopes them).
+
+The host element is `position: fixed; inset: 0; pointer-events: none` so it never intercepts clicks on the app underneath; the actual mount point re-enables `pointer-events: auto` for its own subtree, and the highlight overlay and picking banner explicitly re-disable it again (`pointer-events: none`) so hovering _over_ the highlight box itself doesn't block the pointermove events needed to keep tracking the real element underneath it.
+
+**Self-exclusion** (ignoring the Inspector's own UI while picking) relies on native shadow-DOM event _retargeting_ rather than `Node.contains()`: a `document`-level listener sees `event.target` retargeted to the shadow host itself for any composed event originating inside that host's shadow tree, so `event.target === host` is a correct and cheap test, with no need to walk into (or out of) the shadow tree by hand.
+
+### Picker
+
+`picker/pickerController.ts` is a small, framework-agnostic controller: `document`-level, **capture-phase** listeners for `pointermove`, `click`, and `keydown` (Escape) - the same technique DevTools' own element picker uses. Capture-phase matters specifically for `click`: it lets the controller call `stopImmediatePropagation()` _before_ the event ever reaches the app's own listeners, reliably suppressing the app's click behavior for what is really a picker interaction, regardless of how deep in the tree the app's handler is attached. `pointermove` doesn't call `preventDefault`/`stopPropagation` - hovering must never block the app.
+
+Hit-testing itself is just `Element.closest("[data-fw-primitive]")` (`inspection/ancestry.ts`) run against the native event target - no DOM scan, one native call per pointer move.
+
+`picker/HighlightOverlay.tsx` tracks the hovered element's position via `getBoundingClientRect()` (not CSS layout, since the highlight box lives in the Inspector's own fixed overlay layer, outside the app's layout flow), scheduled through `requestAnimationFrame` and re-measured on a capture-phase `scroll` listener (catching scroll on _any_ ancestor, e.g. an app's own `ScrollArea`, not just the window), `resize`, and a `ResizeObserver` on the element itself.
+
+> **A real bug this surfaced, worth recording:** the first implementation cancelled a pending `requestAnimationFrame` in the effect's cleanup (correct) but never reset the ref tracking it back to `null` (incorrect). The very next `schedule()` call - triggered by the _next_ element the pointer moved to - saw a non-null ref, assumed a frame was still pending, and silently skipped scheduling a new one. Because a single mouse move over real content crosses several elements within one frame, this wedged the highlight box in place after the very first hover and never recovered, even though every state transition (`hovered`, `picking`) was otherwise correct - a bug that a test moving the pointer to exactly one target in one step never exercised, but that a real `page.mouse.move()` in a browser, and a unit test rerendering through several elements before any frame fires, both catch immediately. The fix - reset the ref to `null` alongside cancelling - and a dedicated regression test (`tests/HighlightOverlay.test.tsx`) both ship in v0.2.
+
+### Selection persistence and re-pick (v0.2.1)
+
+`HighlightOverlay` (the same component described above) is rendered up to **twice** at once, distinguished only by a `variant` prop that swaps its color: a `"selected"` instance tracks `inspected.element` and is rendered whenever there is a selection at all - during `"selected"` state and throughout a `"picking"` re-pick alike - and a default `"hover"` instance tracks whatever's currently under the pointer, rendered only while actively picking. The selected instance is what makes the highlight **persist** for as long as that element's panel stays open, including while re-picking (matching the product requirement that selecting an element must keep it "clearly identified" the whole time its data is on screen); the hover instance paints after it in the DOM so it visually supersedes the selected box when the two coincide. Only `InspectorPanel`'s **Close** clears `inspected` (and with it, the selected highlight) - Escape or clicking away during a re-pick does not.
+
+That last point is the other v0.2.1 fix: **cancelling a re-pick must restore the previous selection, not drop to idle.** `inspected` (the single record of "the current/previous selection" - re-pick does not duplicate it into a second slot) is simply never cleared when picking begins; a small `cancelPicking` helper - reached by Escape, by clicking somewhere with no inspectable element, and by explicitly clicking "Cancel" on the launcher, all via the same `PickerCallbacks.onCancel` - resolves to `"selected"` if `inspected` is still set or `"idle"` if it never was:
+
+```text
+IDLE          --Inspect-->      PICKING   --Escape/cancel-->  IDLE           (no prior selection)
+SELECTED(A)   --Pick another--> PICKING   --Escape/cancel-->  SELECTED(A)    (restored, unchanged)
+SELECTED(A)   --Pick another--> PICKING   --select B-->       SELECTED(B)    (replaced, as normal)
+```
+
+The picking effect reads this through a ref (`inspectedRef`, kept in sync by its own small effect - React's rules forbid writing a ref during render) rather than depending on `inspected` directly, so selecting something doesn't tear down and recreate the picker controller's listeners on every selection change - only real `state` transitions do.
+
+### Lifecycle: no polling, no `MutationObserver`
+
+The selected element can leave the document at any point after selection (the app re-renders and unmounts it). The Inspector does not watch for this with a `MutationObserver` or any polling loop - per the same "avoid unnecessary background work" principle the rest of safe-css follows (see [Render architecture](#render-architecture)). Instead, staleness is a **lazy check performed at render time** (`!inspected.element.isConnected`), which is only re-evaluated when something else already causes a re-render - a new selection, or the panel's manual **Refresh** action. A detached element remains fully readable (its last-known attributes and inline styles are still on the node, only its position in the tree is gone), so this fails safe: stale data with a visible notice, never a crash.
+
+**Refresh no longer re-derives data for a detached element (v0.2.1).** The original v0.2 Refresh unconditionally re-ran `inspectElement` against the selected element, which - once that element is detached - actively _degrades_ the snapshot: `collectAncestry` and `findNearestVariableDefinition` both walk `element.parentElement`, which is already `null`, so a re-inspection comes back with empty ancestry and missing raw token values even though the _previous_ snapshot (captured while the element was still attached) had all of it. Refresh now checks `isConnected` first: if the element is still attached, it re-inspects as before; if not, it leaves the existing model's data completely untouched and only forces a re-render (a shallow copy, not a re-inspection) so the stale note reflects the current truth even on the very first render since the element left the document. The net effect: the last-known-good snapshot for a detached element survives Refresh indefinitely, and only picking a new element replaces it.
+
+### Production and SSR
+
+`SafeCssInspector` renders `null` whenever `enabled={false}` or `isDevelopmentBuild()` is false (a small, deliberately-duplicated copy of Core's own `NODE_ENV` check - see [Diagnostics](#diagnostics) - not imported, for the same "no dependency on Core internals" reason as everything else in this section). All DOM/Shadow-DOM creation happens inside a `useEffect`, never during render, so server-side rendering (`react-dom/server`) never touches `document`/`window` at all; `tests/ssr.test.tsx` runs under a real `@vitest-environment node` (no DOM globals present at all, not just jsdom-with-nothing-called) to prove this rather than merely asserting it.
+
+**This runtime check fails _closed_, unlike Core's (v0.2.1).** Core's `isDevelopmentBuild()` defaults to "development" (`catch { return true }`) if it can't read `process.env.NODE_ENV` - a reasonable choice there, since the worst case is an extra console warning or `data-fw-*` attribute. The Inspector's own copy now defaults to "production" (`catch { return false }`) instead: its worst case if it fails open is mounting a live Shadow DOM root, event listeners, and an interactive panel for a real end user, which isn't an acceptable default just because the environment was ambiguous. In practice this `catch` branch is rarely if ever exercised either way - bundlers statically replace `process.env.NODE_ENV` in both dev and prod builds - which is exactly why it's a defense-in-depth layer, not the primary protection.
+
+**The primary protection is build-time exclusion, not this runtime check (v0.2.1).** A runtime "renders `null`" guard doesn't stop a bundler from including the Inspector's code in a production bundle - `import { SafeCssInspector } from "@safe-css/inspector"` at the top of a file ships the whole package regardless of whether the component ever renders anything, because the bundler has no way to know that from a `NODE_ENV` check alone. `apps/demo/src/main.tsx` gates the import itself behind a build-time constant instead:
+
+```tsx
+const Inspector = import.meta.env.DEV
+  ? lazy(() => import("@safe-css/inspector").then((m) => ({ default: m.SafeCssInspector })))
+  : null;
+```
+
+`import.meta.env.DEV` is a compile-time constant Vite replaces with a literal `false` in a production build; Rollup can then prove the whole ternary branch - including the dynamic `import()` inside it - is unreachable and eliminates it entirely during tree-shaking. This was verified against the actual built artifact, not assumed from source: with a plain top-level `import`, `dist/assets/*.js` contained Inspector strings (`fw-inspector-`, `data-safe-css-inspector-host`, ...) and the bundle was 229.82 KB; with the gated dynamic import, those strings are absent from every file in `dist/`, and the bundle drops to 211.89 KB (~18 KB, ~4.6 KB gzipped) - not even a separate unreferenced chunk is emitted, because the whole import graph was proven dead before Rollup ever got to chunking. The equivalent pattern for other bundlers is the same shape: a build-time-constant-gated dynamic `import()`, not a runtime conditional around a static one.
+
+### Ancestry includes the selected element (v0.2.1)
+
+`ui/AncestrySection.tsx` originally rendered only `element.ancestry` - the selected element's safe-css _ancestors_, not the element itself - which meant the panel's "Safe CSS ancestry" section didn't actually show where the chain ended. It now appends the selected element as the list's final row (still outermost-first, still pure DOM order - no React-tree inference), visibly marked with a distinct color and a `← selected` label, e.g.:
+
+```text
+Stack
+└── ScrollArea
+    └── Grid
+        └── Card · Box  ← selected
+```
+
+This reuses `describeElement` and the already-computed `primitive`/`recipe` fields on the `InspectedElement` model itself, rather than re-deriving them - the same values the "Element" section above it already shows.
+
+### Limitations
+
+- **No reverse or global usage analysis.** The dependency tree only ever answers "what does this token depend on", never "what else uses this token" or "what breaks if I change it" - that's the blast-radius work [Future traceability](#future-traceability) anticipates, explicitly deferred past v0.2.
+- **Property mapping is best-effort.** Exact `var()` reference matching (v0.2.1) rules out false positives from name collisions, but can still miss a property that references a token indirectly - through a stylesheet class rather than inline `style`, say. It says "Unknown" rather than guessing, but "Unknown" doesn't always mean "unused."
+- **unsafeCss detection is a heuristic, not ground truth.** Only the count from `data-fw-unsafe-css` is authoritative; the detected list can under- or over-report, and the panel says so explicitly when they disagree.
+- **No editing.** Every value shown is read-only; there is no theme editor, no "try a different token" affordance, and no save/persist mechanism - v0.2 is strictly observational.
+- **No cross-render history.** The panel shows the current inspection snapshot only; there's no timeline of how a value changed across renders or theme switches.
+
 ## Non-goals
 
-Deliberately out of scope for v0.1 (and not accidentally missing): a button/input/select/modal/tabs/tooltip component library, a forms or data-table system, an animation framework, an icon system, Tailwind compatibility, non-React targets, a visual builder, an AI generator, a browser extension, a full CSS debugger, or a production-ready blast-radius UI. safe-css solves the layout/theming/scoping problem; it does not try to be a full design system or hide CSS from developers who already know it.
+Deliberately out of scope (and not accidentally missing): a button/input/select/modal/tabs/tooltip component library, a forms or data-table system, an animation framework, an icon system, Tailwind compatibility, non-React targets, a visual builder, an AI generator, a browser extension, or a Storybook addon. safe-css solves the layout/theming/scoping problem; it does not try to be a full design system or hide CSS from developers who already know it.
+
+As of v0.2, [`@safe-css/inspector`](#inspector) covers read-only, single-element inspection - "why does this element look the way it does" - but a production-ready **blast-radius UI** ("what does changing this token affect, across how many components and screens") is still out of scope: that needs reverse/global usage analysis the Inspector deliberately doesn't attempt (see [Inspector limitations](#inspector)), theme editing, and impact visualization, none of which exist yet.

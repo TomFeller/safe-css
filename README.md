@@ -302,7 +302,42 @@ This is a small, first-pass heuristic, not a CSS linter — see [`docs/architect
 7. **Composable tokens.** When two tokens represent the same design decision (e.g. a border's color), the dependent one references the other's CSS variable rather than duplicating its value, so changing the source token changes everything that depends on it. See [`docs/architecture.md#token-dependencies`](docs/architecture.md#token-dependencies).
 8. **`data-fw-*` is reserved.** Every attribute in that namespace (`data-fw-primitive`, `data-fw-recipe`, `data-fw-variant`, `data-fw-tokens`, `data-fw-unsafe-css`) is framework-owned traceability metadata. The framework's own value always wins if a consumer happens to pass one of these directly, and development builds warn when that happens so it's never a silent, confusing overwrite. See [`docs/architecture.md#future-traceability`](docs/architecture.md#future-traceability).
 
-## 16. v0.1.2 limitations
+## 16. Inspector
+
+`@safe-css/inspector` (v0.2.1) is a read-only, development-only visual DOM inspector: click a rendered safe-css element and see, in a docked panel, exactly why it looks the way it does — its primitive, recipe, active variants, its full safe-css ancestry down to the element itself, every token it uses (raw and resolved value, which CSS property uses it), that token's own dependency chain, and any `unsafeCss` in play. Selecting an element keeps it clearly highlighted for as long as its panel stays open, including while picking a different element to compare against — cancelling (**Esc**, or clicking elsewhere) always returns to whatever was selected before, never to a blank slate.
+
+```bash
+npm install --save-dev @safe-css/inspector
+```
+
+Requires a `@safe-css/core` in the `>=0.1.2 <0.2.0` range (the Inspector depends on the exact `data-fw-*`/`--fw-*` DOM contract that version stabilized — see [`docs/architecture.md#core-compatibility`](docs/architecture.md#core-compatibility)).
+
+**Gate the import behind your build tool's dev flag** — this is the recommended integration, not merely an option. The component itself renders nothing in a production build, but that alone doesn't keep its code out of a production bundle; a bundler ships whatever it can statically see imported, regardless of what a runtime check later decides to render. For Vite:
+
+```tsx
+import { lazy, Suspense } from "react";
+
+const Inspector = import.meta.env.DEV
+  ? lazy(() => import("@safe-css/inspector").then((m) => ({ default: m.SafeCssInspector })))
+  : null;
+
+// Anywhere in the tree, doesn't need to be inside ThemeProvider:
+{
+  Inspector && (
+    <Suspense fallback={null}>
+      <Inspector />
+    </Suspense>
+  );
+}
+```
+
+`import.meta.env.DEV` is a compile-time constant Vite replaces with a literal `false` in production, which lets Rollup prove the whole branch — including the dynamic `import()` inside it — is unreachable and tree-shake it away entirely; verified against `apps/demo`'s actual production build, not assumed (see [`docs/architecture.md#inspector`](docs/architecture.md#inspector) for the before/after bundle measurements). Other bundlers need the equivalent shape: a build-time-constant-gated dynamic import, not a runtime conditional around a static one.
+
+That's the entire public API otherwise — one component, one optional `enabled` prop, no other configuration. Click **Inspect**, hover a safe-css element to see it highlighted with its primitive/recipe label, click to select it and open the panel.
+
+It reads Core's DOM/CSS output only — the `data-fw-*` attributes and `--fw-*` CSS custom properties described in [Future traceability](docs/architecture.md#future-traceability) — never Core's internals, and never React context; `data-fw-*` metadata itself only exists in development builds of Core in the first place, so there's nothing for the Inspector to read in production even if it were mounted there. See [`docs/architecture.md#inspector`](docs/architecture.md#inspector) for the full architecture, including the Shadow DOM isolation, the picker's DevTools-style event capture, and its stated limitations (no theme editing, no reverse "what uses this token" analysis — that's future blast-radius work, not this).
+
+## 17. v0.1.2 limitations
 
 - **Fixed default token categories.** `colors`, `space`, `radius`, `size`, `border`, `shadow`, `layer` are the built-in shape; extra tokens need a small TypeScript declaration-merge (see [Theme](#5-theme)), not a fully generic per-app token schema. TypeScript accepting an augmented token name doesn't guarantee the runtime theme defines it — a `satisfies Theme`-checked custom theme closes that gap for teams that want it; the always-on runtime warning is the fallback for everyone else.
 - **Nested `ThemeProvider` is a full theme replacement, not a partial/inherited override.** See [Theme](#5-theme) and [`docs/architecture.md#nested-themes`](docs/architecture.md#nested-themes). Partial nested themes may be worth adding later; they aren't implemented in v0.1.2.
@@ -320,23 +355,24 @@ This is a small, first-pass heuristic, not a CSS linter — see [`docs/architect
 ## Repository structure
 
 ```text
-packages/core/     the published @safe-css/core library
-apps/demo/          a realistic dashboard app consuming @safe-css/core
-docs/architecture.md   engine internals, precedence, SSR, diagnostics, future work
+packages/core/       the published @safe-css/core library
+packages/inspector/  the published @safe-css/inspector dev-tool (v0.2.1)
+apps/demo/           a realistic dashboard app consuming both
+docs/architecture.md    engine internals, precedence, SSR, diagnostics, Inspector, future work
 ```
 
 ## Documentation
 
-- [`docs/architecture.md`](docs/architecture.md) — styling engine, theme token model, precedence, SSR strategy, diagnostics, future traceability.
-- [`apps/demo`](apps/demo) — a full dashboard screen: shell, sidebar, sticky header, responsive card grid, Overlay badges, theme switching, RTL toggle.
+- [`docs/architecture.md`](docs/architecture.md) — styling engine, theme token model, precedence, SSR strategy, diagnostics, the Inspector, future traceability.
+- [`apps/demo`](apps/demo) — a full dashboard screen: shell, sidebar, sticky header, responsive card grid, Overlay badges, theme switching, RTL toggle, and the Inspector wired in.
 
 ## Development
 
 ```bash
 npm install
-npm run build       # build @safe-css/core, then the demo
-npm test            # run the core package's test suite
-npm run typecheck   # typecheck core + demo
+npm run build       # build @safe-css/core, @safe-css/inspector, then the demo
+npm test            # run core's and inspector's test suites
+npm run typecheck   # typecheck core + inspector + demo
 npm run lint         # eslint across the whole workspace
 npm run dev          # start the demo app
 ```
