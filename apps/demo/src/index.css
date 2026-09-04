@@ -1,0 +1,18 @@
+/*
+ * This stylesheet belongs to the demo app, not the framework - safe-css does
+ * not ship a global reset (see docs/architecture.md#no-global-reset).
+ * An application is always responsible for sizing its own document root;
+ * here that's what makes `<Stack height="full">` mean "fill the viewport".
+ */
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}

@@ -1,0 +1,266 @@
+/*
+ * Static structural styles shared by every primitive instance.
+ *
+ * Every rule here is a single class selector (or an attribute selector
+ * scoped to our own class, used only for the RTL overlay-transform flip
+ * below) targeting exactly one concern. There are no descendant selectors,
+ * no element selectors, and no `!important` anywhere in this file - see
+ * docs/architecture.md#scoped-css for why that's a hard architectural rule,
+ * not a style preference.
+ *
+ * Anything that depends on a theme token (spacing, color, radius, size,
+ * shadow, border, layer) is deliberately NOT here: those are only ever
+ * written as `var(--fw-...)` references in inline `style`, so a theme change
+ * propagates without regenerating any CSS. This file only ever encodes the
+ * fixed, finite vocabulary of *structural* choices each primitive exposes
+ * (flex direction, alignment keywords, overflow behavior, position scheme).
+ */
+
+.fw-Box,
+.fw-Stack,
+.fw-Row,
+.fw-Grid,
+.fw-ScrollArea,
+.fw-Sticky,
+.fw-Overlay,
+.fw-OverlayItem {
+  box-sizing: border-box;
+}
+
+/* Stack: vertical flex */
+.fw-Stack {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Row: horizontal flex */
+.fw-Row {
+  display: flex;
+  flex-direction: row;
+}
+
+.fw-Row--wrap {
+  flex-wrap: wrap;
+}
+
+.fw-Row--nowrap {
+  flex-wrap: nowrap;
+}
+
+/* Shared alignment vocabulary (Stack, Row, Grid) */
+.fw-align-start {
+  align-items: flex-start;
+}
+
+.fw-align-center {
+  align-items: center;
+}
+
+.fw-align-end {
+  align-items: flex-end;
+}
+
+.fw-align-stretch {
+  align-items: stretch;
+}
+
+.fw-align-baseline {
+  align-items: baseline;
+}
+
+.fw-justify-start {
+  justify-content: flex-start;
+}
+
+.fw-justify-center {
+  justify-content: center;
+}
+
+.fw-justify-end {
+  justify-content: flex-end;
+}
+
+.fw-justify-between {
+  justify-content: space-between;
+}
+
+.fw-justify-around {
+  justify-content: space-around;
+}
+
+.fw-justify-evenly {
+  justify-content: space-evenly;
+}
+
+/* Shared flex-child + sizing vocabulary (Box, Stack, Row, ScrollArea) */
+.fw-grow {
+  flex-grow: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.fw-shrink {
+  flex-shrink: 1;
+}
+
+.fw-shrink-none {
+  flex-shrink: 0;
+}
+
+.fw-w-full {
+  width: 100%;
+}
+
+.fw-w-fit {
+  width: fit-content;
+}
+
+.fw-h-full {
+  height: 100%;
+}
+
+.fw-h-fit {
+  height: fit-content;
+}
+
+/* Grid */
+.fw-Grid {
+  display: grid;
+}
+
+.fw-grid-cols-1 {
+  grid-template-columns: repeat(1, 1fr);
+}
+.fw-grid-cols-2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+.fw-grid-cols-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+.fw-grid-cols-4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+.fw-grid-cols-5 {
+  grid-template-columns: repeat(5, 1fr);
+}
+.fw-grid-cols-6 {
+  grid-template-columns: repeat(6, 1fr);
+}
+.fw-grid-cols-12 {
+  grid-template-columns: repeat(12, 1fr);
+}
+
+/* ScrollArea: this pair of rules is the whole point of the primitive - it
+   solves the classic "flex/grid child won't scroll" problem (min-width/
+   min-height default to `auto` on flex/grid children, which prevents
+   overflow from ever kicking in) without every app needing to rediscover it. */
+.fw-ScrollArea {
+  min-width: 0;
+  min-height: 0;
+}
+
+.fw-ScrollArea--vertical {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.fw-ScrollArea--horizontal {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.fw-ScrollArea--both {
+  overflow: auto;
+}
+
+.fw-overscroll-contain {
+  overscroll-behavior: contain;
+}
+
+.fw-overscroll-auto {
+  overscroll-behavior: auto;
+}
+
+/* Sticky */
+.fw-Sticky {
+  position: sticky;
+}
+
+/* Overlay */
+.fw-Overlay {
+  position: relative;
+}
+
+.fw-OverlayItem {
+  position: absolute;
+}
+
+/* Overlay anchor -> transform lookup table.
+   Insets are computed per-instance (they depend on the offset token) and
+   applied inline; only the transform, which depends on writing direction,
+   lives in CSS so the [dir="rtl"] flip below can apply natively with no
+   JavaScript direction detection. */
+.fw-anchor-top-center--inside,
+.fw-anchor-bottom-center--inside {
+  transform: translateX(-50%);
+}
+
+.fw-anchor-center-start--inside,
+.fw-anchor-center-end--inside {
+  transform: translateY(-50%);
+}
+
+.fw-anchor-center--inside,
+.fw-anchor-center--edge {
+  transform: translate(-50%, -50%);
+}
+
+.fw-anchor-top-start--edge {
+  transform: translate(-50%, -50%);
+}
+[dir="rtl"] .fw-anchor-top-start--edge {
+  transform: translate(50%, -50%);
+}
+
+.fw-anchor-top-center--edge {
+  transform: translate(-50%, -50%);
+}
+
+.fw-anchor-top-end--edge {
+  transform: translate(50%, -50%);
+}
+[dir="rtl"] .fw-anchor-top-end--edge {
+  transform: translate(-50%, -50%);
+}
+
+.fw-anchor-center-start--edge {
+  transform: translate(-50%, -50%);
+}
+[dir="rtl"] .fw-anchor-center-start--edge {
+  transform: translate(50%, -50%);
+}
+
+.fw-anchor-center-end--edge {
+  transform: translate(50%, -50%);
+}
+[dir="rtl"] .fw-anchor-center-end--edge {
+  transform: translate(-50%, -50%);
+}
+
+.fw-anchor-bottom-start--edge {
+  transform: translate(-50%, 50%);
+}
+[dir="rtl"] .fw-anchor-bottom-start--edge {
+  transform: translate(50%, 50%);
+}
+
+.fw-anchor-bottom-center--edge {
+  transform: translate(-50%, 50%);
+}
+
+.fw-anchor-bottom-end--edge {
+  transform: translate(50%, 50%);
+}
+[dir="rtl"] .fw-anchor-bottom-end--edge {
+  transform: translate(-50%, 50%);
+}
