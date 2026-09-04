@@ -105,8 +105,8 @@ export const Grid = forwardRef(function Grid(props: GridProps, ref: PolymorphicR
       ref={ref}
       className={cx(...classes, className)}
       style={finalStyle}
-      {...debugAttributes({ primitive: "Grid", tokens, unsafeCssCount })}
       {...rest}
+      {...debugAttributes({ primitive: "Grid", tokens, unsafeCssCount }, rest, diagnostics)}
     >
       {children}
     </Component>

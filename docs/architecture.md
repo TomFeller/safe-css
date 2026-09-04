@@ -8,6 +8,7 @@ This document explains the internal design of `@safe-css/core` and the reasoning
 - [Theme token model](#theme-token-model)
 - [Token dependencies](#token-dependencies)
 - [Custom tokens](#custom-tokens)
+- [Nested themes](#nested-themes)
 - [Render architecture](#render-architecture)
 - [Style precedence](#precedence)
 - [Box](#box)
@@ -42,7 +43,7 @@ This is a deliberate simplification versus a fully generic `createTheme<T>()` th
 
 `createTheme(input)` deep-merges `input` over a complete built-in default theme, one category at a time (`{ ...defaultTheme.space, ...input.space }`). The result is always a fully-populated `Theme` — no component ever has to handle a partially-defined theme, which is what lets token resolution simply be "look up `theme[category][token]`" with no fallback branch.
 
-`themeToCssVariables(theme)` is the only place a theme's _values_ ever become literal CSS strings — it flattens the theme into a `{ "--fw-space-card": "16px", ... }` map, which `ThemeProvider` applies as an inline `style` object. Every downstream primitive only ever reads `var(--fw-space-card)`, never `16px`. This is what makes a theme change safe and total: changing `theme.space.card` changes one CSS custom property, and every element referencing it (via the browser's own CSS variable resolution) updates without React needing to re-render a single one of them — though in practice a theme swap in this codebase _is_ a React re-render for the elements that actually consume the changed variable (see [Render architecture](#render-architecture) for how far that re-render actually propagates), it doesn't have to be for the visual update itself to happen, since that's the browser's own CSS engine resolving the variable.
+`themeToCssVariables(theme)` is the only place a theme's _values_ ever become literal CSS strings — it flattens the theme into a `{ "--fw-space-card": "16px", ... }` map, which `ThemeProvider` applies as an inline `style` object. Every downstream primitive only ever reads `var(--fw-space-card)`, never `16px`. This is what makes a theme change safe and total: changing `theme.space.card` changes one CSS custom property, and every element referencing it picks up the new value through the browser's own CSS variable resolution - the _visual_ update never depends on any particular component re-rendering. Whether any given primitive's own React render is skipped is a separate, narrower question with a precise (not blanket) answer - see [Render architecture](#render-architecture): the `ThemeMetaContext` split stops a value-only theme change from forcing primitives to re-render _through that context_, but it does not, and is not meant to, prevent a primitive from re-rendering for the ordinary reason any React component does - because its own parent re-rendered and it isn't memoized.
 
 ## Token dependencies
 
@@ -75,6 +76,24 @@ Given that, v0.1.1 keeps the fixed-interface-plus-declaration-merging design (re
 
 This is the honest state of the art for this pattern: full compile-time closure isn't reachable without abandoning either the shared global interface (losing "augment once, autocomplete everywhere") or the ability to build a theme incrementally via `createTheme({ ...just what changed })`. Priority order for this decision, per the product's own rules, was predictability first, then developer experience, then autocomplete, then type-system purity - which is why the answer leans on a strong, always-on runtime check rather than a more elaborate type-level one.
 
+## Nested themes
+
+**A nested `ThemeProvider` is a full theme replacement for its subtree in v0.1.2, not a partial override of the parent theme.** This is worth stating plainly because the natural-sounding assumption - "the inner provider only changes the tokens I explicitly gave it, and inherits the rest from the parent" - is not what actually happens, and earlier documentation (through v0.1.1) incorrectly implied it was.
+
+Why: `theme` is always a _complete_ `Theme` object by the time it reaches `ThemeProvider`. The normal way to build one, `createTheme(partialInput)`, merges `partialInput` over the **built-in default theme** (`defaultTheme`, in `theme/defaultTheme.ts`) - one category at a time, the same merge regardless of where in the tree it's called. It has no way to know, and never asks, what theme is active higher up the React tree. So:
+
+```tsx
+<ThemeProvider theme={parentTheme}>
+  <ThemeProvider theme={createTheme({ colors: { action: "red" } })}>{/* ... */}</ThemeProvider>
+</ThemeProvider>
+```
+
+does **not** mean "inherit every value from `parentTheme` except `colors.action`." The inner `createTheme({...})` call merges `{ colors: { action: "red" } }` over `defaultTheme`, producing a complete theme whose `space`, `radius`, `size`, `border`, `shadow`, and `layer` values are all `defaultTheme`'s - regardless of what `parentTheme` had customized in those categories. `ThemeProvider` then writes CSS custom properties for _every_ token in that complete theme (via `themeToCssVariables`, see [Theme token model](#theme-token-model)) onto its own wrapper `<div>`. Because CSS custom properties are resolved from the nearest ancestor that defines them, and the inner provider defines all of them, none of the outer provider's values are visible inside the inner subtree at all - not even the ones the inner theme "didn't mention."
+
+This is a real constraint, not an edge case: if `parentTheme` customized `space.card` and the inner `ThemeProvider` only means to change `colors.action`, the inner subtree's `space.card` silently reverts to the _built-in default_, not `parentTheme`'s customized value. `tests/theme.test.tsx`'s nested-provider test asserts this exact behavior so it stays a documented, protected fact about the current architecture rather than a surprise.
+
+A partial/inherited nested theme (where an inner provider could say "same as the ambient theme, except X") is a reasonable feature for later - it would need `createTheme` or `ThemeProvider` to merge over the _ambient_ theme (read via `ThemeValueContext`, see [Portals](#portals)) rather than always over `defaultTheme`. That is deliberately not implemented in v0.1.2; changing the merge base is a real behavior change, not a documentation fix, and is out of scope for this release. For now, a nested `ThemeProvider` should be given a **complete** theme reflecting everything its subtree needs, typically by building it from the same base the parent theme was built from (e.g. `createTheme({ ...parentOverrides, colors: { action: "red" } })`) rather than assuming inheritance will fill in the gaps.
+
 ## Render architecture
 
 Every primitive reads from React context once per render, via `useTokenResolver` (`src/style/useResolvedToken.ts`). What it actually needs from that context is narrow: the _set of valid token names_ per category (to validate a prop and warn if it's wrong), the diagnostics mode, and whether a `ThemeProvider` exists at all - never the theme's resolved _values_, since building a `var(--fw-space-card)` reference is pure string concatenation from a category and a token name, not something that needs `"16px"` at all.
@@ -86,9 +105,28 @@ That distinction is why the context is split into two, in `theme/ThemeContext.ts
 
 `ThemeProvider` computes a cheap _signature_ of the theme's token names every render (`tokenNameSignature`, e.g. `"space:none,control,element,card,section,page|..."` - a few dozen key lookups, effectively free) and only rebuilds `tokenNames` - and therefore only produces a new `ThemeMetaContext` value - when that signature actually changes. A value-only theme update (`space.card: "16px" -> "20px"`) produces the _same_ signature, so `tokenNames` stays referentially identical, `ThemeMetaContext`'s value stays referentially identical, and React's own context bailout means a descendant that only reads `ThemeMetaContext` - which is every primitive - never re-renders because of it, even though `ThemeProvider` itself did.
 
+`tokenNameSignature` sorts both the category list and each category's token-name list before joining (v0.1.2) - deliberately, not incidentally, since `Object.keys()`'s order otherwise depends on insertion order, and two themes with identical token names built via a different sequence of object spreads would then produce different signatures, defeating the memo for no real reason. `tests/themeRenderOptimization.test.tsx` covers this directly: two themes with the same token names inserted in a different order produce the same signature and the same context-stability behavior.
+
 This is a real, verified effect, not a theoretical one: `tests/themeRenderOptimization.test.tsx` wraps a `useTokenResolver`-consuming component in `React.memo()` (with no props of its own, so `memo` bails out unless a _subscribed_ context changes) and asserts its render count doesn't move across a value-only theme swap, but does move when the token _names_ genuinely change (e.g. an augmented theme adds a new one) or when `diagnostics` changes. `React.memo` is required in the test to observe the effect in isolation - without it, a component still re-renders whenever _its own_ parent does, for the ordinary reason any non-memoized React component does; the context split only prevents re-renders that would otherwise be caused by _this specific context_ changing.
 
 The actual CSS values never needed to be in React state to begin with - they only ever need to reach the DOM once, as the inline `style` object `ThemeProvider` computes from `themeToCssVariables(theme)` (see [Theme token model](#theme-token-model)), after which the browser's own CSS engine does the rest. Splitting the context is what stops that DOM-bound information from _also_ forcing every primitive through React's render pipeline for no reason.
+
+**What this optimization is not.** It does not make ordinary React parent-child rendering disappear, and it was never meant to. Consider:
+
+```tsx
+function App() {
+  const [themeName, setThemeName] = useState("default");
+  return (
+    <ThemeProvider theme={themePresets[themeName]}>
+      <Dashboard />
+    </ThemeProvider>
+  );
+}
+```
+
+When `setThemeName` runs, `App` re-renders, and - completely independent of anything `ThemeProvider` or its contexts do - `Dashboard` re-renders too, because that's what a React parent re-rendering a non-memoized child function component always does. `ThemeMetaContext`'s stability doesn't (and architecturally can't) prevent this: `Dashboard` isn't re-rendering "because of" the theme context here, it's re-rendering because `App`, its actual parent, re-rendered and passed it through in the ordinary way. The render-architecture split only ever addresses the _other_ path - a re-render that would otherwise be caused by `ThemeMetaContext`'s value changing - and only in the case where the token _names_ didn't change (see above). If `Dashboard`'s own re-render cost matters (it usually doesn't - re-rendering is cheap; only [re]painting is when it gets expensive), the normal React answer is `React.memo` on `Dashboard` itself, exactly as any other React app would do, not something this library does automatically. The architecture stays out of that decision on purpose: optimizing context propagation is this codebase's job, second-guessing an application's own component tree with widespread `React.memo` is not - see docs/architecture.md's own [Non-goals](#non-goals) for the same principle applied elsewhere.
+
+The precise claim, stated once, for anything that references this section: **a theme value-only change (same token names, different values) no longer causes additional primitive re-renders _through `ThemeMetaContext` propagation_.** It says nothing about, and does not change, whether a primitive re-renders for any other reason.
 
 ## Precedence
 
@@ -147,6 +185,10 @@ The one runtime environment check in the codebase (`isDevelopmentBuild()`, gatin
 
 Diagnostics are additive-only: every warning is a `console.warn` call, gated by `ThemeProvider`'s `diagnostics` prop (`"warn"` by default outside production, `"off"` in production unless overridden). No diagnostic call ever changes rendered output, so flipping diagnostics on or off can never change what an app looks like — only what shows up in the console. Warnings are deduplicated per unique `(kind, key)` pair for the life of the module (`src/diagnostics/warn.ts`'s `warnOnce`), so a list of a hundred cards all using the same invalid token produces one warning, not a hundred.
 
+**Every warning path takes `diagnostics` as an explicit parameter and checks it before calling `warnOnce`** - `warnInvalidToken`, `warnMissingThemeProvider`, `warnGridConflict`, `warnSuspiciousUnsafeCss`, `warnRecipeVariantCollision`, and `warnReservedAttribute` all follow this same shape (`warn.ts`'s shared `warnIfEnabled` helper). This is worth stating as an invariant because it wasn't quite true in v0.1.1: `warnMissingThemeProvider` hardcoded `"warn"` instead of accepting the caller's actual diagnostics mode, so a missing-`ThemeProvider` warning could fire even under `diagnostics="off"` (and, in principle, in a production build where nothing else warns). Fixed in v0.1.2 by threading the real `diagnostics` value (already available in `useTokenResolver`, which computes it from context) through to the call, the same way every other warning function already worked.
+
+Fixing the call site surfaced a second, more subtle issue in the same area: `ThemeMetaContext`'s _default_ value (used when there's no `ThemeProvider` ancestor at all) computed `defaultDiagnosticsMode()` once, at module-evaluation time, via `createContext({...})`'s initial value argument. In a real bundled app this is harmless - bundlers statically replace `process.env.NODE_ENV` before the module even runs, so the value baked in is already correct - but it made the "no provider, production build" path impossible to exercise faithfully in a test that flips `process.env.NODE_ENV` at runtime (the already-evaluated default never gets a chance to recompute). `useThemeMeta()` now recomputes `defaultDiagnosticsMode()` freshly whenever `isProvided` is false, rather than trusting the frozen default - a small, cheap change (only on the already-unusual "no provider" path) that also happens to make the environment-dependent behavior properly testable without `vi.resetModules()` gymnastics. `tests/theme.test.tsx` covers both `diagnostics="warn"` (warns) and `diagnostics="off"` (silent) for this path, plus a dedicated production-mode check (temporarily setting `process.env.NODE_ENV = "production"`) proving the _default_, no-provider path stays silent too.
+
 Development _metadata_ (the `data-fw-*` attributes - see [Future traceability](#future-traceability)) is a separate, unconditional mechanism gated only by `isDevelopmentBuild()`, not by the `diagnostics` mode. This distinction matters: turning warnings off (`diagnostics="off"`) is something an app might reasonably do to quiet a noisy console during a migration, and doing so should not also blind a future dev-tool reading the metadata - visibility and warning-noise are two different concerns with two different on/off switches.
 
 ## unsafeCss diagnostics
@@ -190,6 +232,15 @@ A later "blast radius" feature (§32 of the original spec: "changing `radius.con
 All of this is centralized in one place, `src/primitives/internal/debugAttributes.ts` - every primitive calls the same `debugAttributes({...})` function right before render rather than each reimplementing its own subset of this logic, so the metadata model (which attributes exist, when they're included) has exactly one definition to change.
 
 None of this exists in production output (`isDevelopmentBuild()` gates it, same as diagnostics), so it costs nothing at runtime for real users. But it means a future tool doesn't need a redesign of the rendering pipeline to exist — it can be built as a dev-mode DOM walker (or a browser extension, or a Storybook addon) that reads these attributes directly, correlates them against a theme's token table (including the [token dependencies](#token-dependencies) between tokens themselves), and answers "what does changing `radius.control` touch" without the framework's core architecture changing at all.
+
+**The `data-fw-*` namespace is reserved (v0.1.2).** A future tool trusting these attributes unconditionally only works if the framework's own value always wins - if `<Box data-fw-primitive="Banana">` could silently overwrite what `Box` itself computes, depending on prop-spread order, the metadata would be untrustworthy exactly where it matters most. Two things make this actually true rather than just documented intent:
+
+1. **Correctness is structural, not incidental.** Every primitive spreads its own leftover DOM props (`{...rest}`) _before_ `{...debugAttributes(...)}` in JSX, so the framework's own attributes are always applied last and always win, regardless of what a consumer passed. `defineRecipe` does the analogous thing for `data-fw-recipe`/`data-fw-variant`: it sets them on the merged props object _after_ spreading the recipe's instance props.
+2. **Each layer only guards what it itself sets.** `PRIMITIVE_RESERVED_ATTRIBUTES` (`data-fw-primitive`, `data-fw-tokens`, `data-fw-unsafe-css`) is what a primitive checks its own `rest` against; `RECIPE_RESERVED_ATTRIBUTES` (`data-fw-recipe`, `data-fw-variant`) is what `defineRecipe` checks its own instance props against - two disjoint lists, not one shared one. This isn't an arbitrary split: `data-fw-recipe`/`data-fw-variant` are legitimately passed down from the recipe layer to its underlying primitive as ordinary props on _every_ render of _every_ recipe, so if a primitive checked for those too, it would warn about the framework's own internal plumbing on every recipe use. Checking only the attributes a given layer actually computes is what keeps the warning meaningful (a real consumer collision) instead of constant background noise.
+
+A consumer passing a reserved attribute directly - `<Box data-fw-primitive="Banana" />` or `<Card data-fw-recipe="Evil" />` as an instance prop - still renders (the framework's correct value simply wins) and produces a `warnReservedAttribute` diagnostic in development, gated by the same `diagnostics` mode as everything else (see [Diagnostics](#diagnostics)) so it disappears under `diagnostics="off"` like any other warning. This is deliberately not a data-attribute parser or a general prop-validation system - it's a fixed check against two short, known lists.
+
+One consequence worth stating explicitly: in a **production** build, safe-css doesn't compute any `data-fw-*` metadata at all (`debugAttributes`'s `isDevelopmentBuild()` early return - see [Future traceability](#future-traceability)), so there is nothing for a consumer-supplied `data-fw-primitive` to collide _with_, and it passes straight through to the DOM untouched, exactly like any other custom `data-*` attribute would. The "reserved, framework-always-wins" guarantee is specifically a development-time concern, matching where the metadata it protects actually exists - it was never meant to police what attributes a production app's markup may contain. `tests/productionDiagnostics.test.tsx` asserts this precisely (both "no warning" and "the consumer's own value passes through unmodified") rather than assuming production behaves like development with the volume turned down.
 
 ## Non-goals
 

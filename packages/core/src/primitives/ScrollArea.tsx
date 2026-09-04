@@ -81,8 +81,8 @@ export const ScrollArea = forwardRef(function ScrollArea(
       ref={ref}
       className={cx(...classes, className)}
       style={finalStyle}
-      {...debugAttributes({ primitive: "ScrollArea", unsafeCssCount })}
       {...rest}
+      {...debugAttributes({ primitive: "ScrollArea", unsafeCssCount }, rest, diagnostics)}
     >
       {children}
     </Component>

@@ -53,8 +53,8 @@ const OverlayRoot = forwardRef(function Overlay(
       ref={ref}
       className={cx("fw-Overlay", className)}
       style={finalStyle}
-      {...debugAttributes({ primitive: "Overlay", unsafeCssCount })}
       {...rest}
+      {...debugAttributes({ primitive: "Overlay", unsafeCssCount }, rest, diagnostics)}
     >
       {children}
     </Component>
@@ -130,8 +130,8 @@ const OverlayItem = forwardRef(function OverlayItem(
       ref={ref}
       className={cx("fw-OverlayItem", overlayAnchorClassName(anchor, placement), className)}
       style={finalStyle}
-      {...debugAttributes({ primitive: "Overlay.Item", tokens, unsafeCssCount })}
       {...rest}
+      {...debugAttributes({ primitive: "Overlay.Item", tokens, unsafeCssCount }, rest, diagnostics)}
     >
       {children}
     </Component>

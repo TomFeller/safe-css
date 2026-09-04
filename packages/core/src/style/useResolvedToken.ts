@@ -24,7 +24,7 @@ export function useTokenResolver(componentName: string) {
   const { tokenNames, diagnostics, isProvided } = useThemeMeta();
 
   if (!isProvided) {
-    warnMissingThemeProvider(componentName);
+    warnMissingThemeProvider(diagnostics, componentName);
   }
 
   function resolveToken<C extends ThemeCategory>(

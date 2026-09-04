@@ -6,8 +6,8 @@
  * why this file is named `type-tests.ts` rather than `*.test.ts` - vitest's
  * include glob deliberately does not match it.
  */
-import type { ComponentProps } from "react";
-import { Box, defineRecipe } from "../src";
+import { createRef, type ComponentProps } from "react";
+import { Box, Stack, defineRecipe } from "../src";
 import type { BoxProps, GridProps, RecipeVariantMap, Theme } from "../src";
 
 // --- Box: only theme tokens are accepted, not arbitrary strings ---
@@ -133,3 +133,29 @@ export const PlainCardRecipe = defineRecipe(Box, { name: "Card", base: { padding
 type PlainCardRecipeProps = ComponentProps<typeof PlainCardRecipe>;
 // @ts-expect-error - `type`/`disabled` are button-only, this recipe is a div
 export const invalidCardButtonProp: PlainCardRecipeProps = { type: "submit" };
+
+// --- defineRecipe: `ref` is typed to the recipe's actual element, not
+// `RefAttributes<unknown>` (v0.1.2 fix - v0.1.1 left `ref` typed as
+// `unknown`, which silently accepted *any* ref object regardless of the
+// recipe's real element, since every element type is assignable to
+// `unknown`). See docs/architecture.md#recipes. ---
+
+const buttonRef = createRef<HTMLButtonElement>();
+export const validButtonLikeRef: ButtonLikeProps["ref"] = buttonRef;
+
+const anchorRef = createRef<HTMLAnchorElement>();
+// @ts-expect-error - an anchor ref must not be assignable to a button-shaped recipe
+export const invalidButtonLikeRef: ButtonLikeProps["ref"] = anchorRef;
+
+const divRef = createRef<HTMLDivElement>();
+export const validPlainCardRef: PlainCardRecipeProps["ref"] = divRef;
+// @ts-expect-error - a button ref must not be assignable to a div-shaped (default) recipe
+export const invalidPlainCardRef: PlainCardRecipeProps["ref"] = buttonRef;
+
+// A recipe built on a different primitive still gets that primitive's own
+// default element for its ref, e.g. Stack stays div-shaped by default too:
+export const SectionRecipe = defineRecipe(Stack, { name: "Section", base: { gap: "section" } });
+type SectionRecipeProps = ComponentProps<typeof SectionRecipe>;
+export const validSectionRef: SectionRecipeProps["ref"] = divRef;
+// @ts-expect-error - a button ref must not be assignable to Section's div ref
+export const invalidSectionRef: SectionRecipeProps["ref"] = buttonRef;

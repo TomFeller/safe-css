@@ -26,9 +26,19 @@ export interface ThemeProviderProps {
  * box of its own, so it never interferes with height/width chains like
  * `<Stack height="full">`.
  *
- * `ThemeProvider` can be nested. A nested provider overrides only the CSS
- * variables it defines; anything else continues to inherit from the parent
- * theme, following normal CSS custom property inheritance.
+ * `ThemeProvider` can be nested, but as of v0.1.2 a nested provider is a
+ * **full theme replacement** for its subtree, not a partial override of the
+ * parent theme. `theme` is always a complete {@link Theme} - typically built
+ * with `createTheme(partialInput)`, which merges `partialInput` over the
+ * *built-in default* theme, not over whatever theme happens to be active
+ * higher up the tree - so every CSS custom property this provider writes
+ * (every token in every category) is set here, from that complete theme.
+ * There is currently no mechanism for a nested provider to inherit an
+ * individual token's value from an ancestor `ThemeProvider` while
+ * overriding only a few others; that would require `createTheme` (or
+ * `ThemeProvider`) to know about the *ambient* theme, which it does not.
+ * Partial/inherited nested themes may be worth adding later, but are not
+ * part of this API today - see docs/architecture.md#nested-themes.
  *
  * Internally this publishes two separate contexts (see `ThemeContext.tsx`):
  * a metadata context primitives actually subscribe to (token *names* +

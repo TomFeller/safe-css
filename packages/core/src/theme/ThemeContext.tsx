@@ -35,7 +35,22 @@ ThemeMetaContext.displayName = "SafeCssThemeMetaContext";
 export const ThemeMetaContextProvider = ThemeMetaContext.Provider;
 
 export function useThemeMeta(): ThemeMetaContextValue {
-  return useContext(ThemeMetaContext);
+  const value = useContext(ThemeMetaContext);
+
+  // The context's default `diagnostics` value above is computed once, when
+  // this module first evaluates - fine for a real bundled build (bundlers
+  // statically replace `process.env.NODE_ENV` before the module even runs,
+  // so the value is already correct by then), but wrong to rely on as a
+  // general guarantee: recomputing it here, only for the truly-unprovided
+  // fallback, means the "no ThemeProvider at all" path always reflects the
+  // environment at render time rather than whatever it happened to be when
+  // this module was first imported. `ThemeProvider` already does the
+  // equivalent fresh computation for its own `diagnostics` prop default; this
+  // keeps the unprovided path consistent with it. See docs/architecture.md#diagnostics.
+  if (!value.isProvided) {
+    return { ...value, diagnostics: defaultDiagnosticsMode() };
+  }
+  return value;
 }
 
 /**

@@ -138,12 +138,79 @@ describe("invalid token handling", () => {
 });
 
 describe("missing ThemeProvider", () => {
-  it("warns when a primitive renders without a ThemeProvider ancestor", () => {
+  it("warns when a primitive renders without a ThemeProvider ancestor (dev default: diagnostics='warn')", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     render(<Box padding="card" />);
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls[0]?.[0]).toContain("without a <ThemeProvider>");
     warn.mockRestore();
+  });
+
+  it("does not warn when running under a production build (diagnostics defaults to 'off')", () => {
+    // With no ThemeProvider at all, there's no `diagnostics` prop to read -
+    // the mode falls back to `defaultDiagnosticsMode()`, which is what this
+    // test exercises directly by simulating a production build. This was a
+    // real v0.1.1 bug: `warnMissingThemeProvider` hardcoded `"warn"` and
+    // ignored the active diagnostics mode entirely, so this warning could
+    // fire even in a production build. Fixed in v0.1.2.
+    const originalEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      render(<Box padding="card" />);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+      process.env.NODE_ENV = originalEnv;
+    }
+  });
+
+  it("respects an explicit diagnostics='off' the same way any other warning does", () => {
+    // A primitive rendered *inside* a ThemeProvider that explicitly turns
+    // diagnostics off should never warn about anything, including a nested
+    // primitive that (hypothetically) rendered outside it - covered here via
+    // the direct diagnostics mode path rather than a provider-less render,
+    // since diagnostics="off" can only be set through a ThemeProvider prop.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    render(
+      <ThemeProvider theme={createTheme()} diagnostics="off">
+        <Box padding="card" />
+      </ThemeProvider>,
+    );
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+});
+
+describe("nested ThemeProvider", () => {
+  it("is a full theme replacement, not a partial override of the parent theme", () => {
+    // Full spec (`docs/architecture.md#nested-themes`): a nested provider's
+    // `theme` is always built via `createTheme(partialInput)`, which merges
+    // over the *built-in default*, never over the parent's active theme. So
+    // customizing `space.card` on the parent must NOT leak into a nested
+    // provider that only customizes `colors.action`.
+    const parentTheme = createTheme({ space: { card: "30px" } });
+    const innerTheme = createTheme({ colors: { action: "red" } });
+
+    const { container } = render(
+      <ThemeProvider theme={parentTheme}>
+        <Box data-testid="outer" padding="card" />
+        <ThemeProvider theme={innerTheme}>
+          <Box data-testid="inner" padding="card" />
+        </ThemeProvider>
+      </ThemeProvider>,
+    );
+
+    const roots = container.querySelectorAll("[data-fw-theme-root]");
+    const outerRoot = roots[0] as HTMLElement;
+    const innerRoot = roots[1] as HTMLElement;
+
+    expect(outerRoot.style.getPropertyValue("--fw-space-card")).toBe("30px");
+    // The inner provider did not ask for `space.card` to change, but since
+    // it's a full replacement (built from `defaultTheme`, not `parentTheme`),
+    // it resets to the *built-in default*, not the parent's customized value.
+    expect(innerRoot.style.getPropertyValue("--fw-space-card")).toBe("16px");
+    expect(innerRoot.style.getPropertyValue("--fw-color-action")).toBe("red");
   });
 });
 

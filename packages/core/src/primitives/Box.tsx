@@ -152,8 +152,8 @@ export const Box = forwardRef(function Box(props: BoxProps, ref: PolymorphicRef<
       ref={ref}
       className={cx(...classes, className)}
       style={finalStyle}
-      {...debugAttributes({ primitive: "Box", tokens, unsafeCssCount })}
       {...rest}
+      {...debugAttributes({ primitive: "Box", tokens, unsafeCssCount }, rest, diagnostics)}
     >
       {children}
     </Component>

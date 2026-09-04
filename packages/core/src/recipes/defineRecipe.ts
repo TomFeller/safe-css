@@ -4,12 +4,12 @@ import {
   type ComponentType,
   type ElementType,
   type ForwardRefExoticComponent,
-  type RefAttributes,
 } from "react";
 import { isDevelopmentBuild } from "../diagnostics/env";
-import { warnRecipeVariantCollision } from "../diagnostics/warn";
+import { warnRecipeVariantCollision, warnReservedAttribute } from "../diagnostics/warn";
 import { useThemeMeta } from "../theme/ThemeContext";
-import type { PolymorphicProps } from "../primitives/internal/polymorphic";
+import { RECIPE_RESERVED_ATTRIBUTES } from "../primitives/internal/debugAttributes";
+import type { PolymorphicProps, PolymorphicRef } from "../primitives/internal/polymorphic";
 
 /**
  * A component shape a recipe can be built on: any of the framework's
@@ -79,6 +79,19 @@ export type RecipeVariantProps<V> = { [K in keyof V]?: keyof V[K] & string };
 export type RecipeProps<P, V> = Omit<P, keyof RecipeVariantProps<V>> & RecipeVariantProps<V>;
 
 /**
+ * A recipe's `ref` prop, built the same way every primitive already builds
+ * its own (`PolymorphicRef<E>` - see `internal/polymorphic.ts`) rather than
+ * via React's `RefAttributes<T>`. `RefAttributes<unknown>` was the v0.1.1
+ * bug here: it type-checked (a `Ref<unknown>` accepts *any* concrete ref
+ * object, since every element type is assignable to `unknown`), so a
+ * `Ref<HTMLAnchorElement>` passed to a button-shaped recipe compiled without
+ * complaint despite being wrong at runtime. Keying the ref type off `E` -
+ * the same type parameter that already drives DOM prop inference - fixes
+ * both together instead of independently.
+ */
+type RecipeRefProp<E extends ElementType> = { ref?: PolymorphicRef<E> };
+
+/**
  * Builds a reusable component from a primitive plus a fixed set of semantic
  * variants, without introducing arbitrary CSS. A recipe may only set props
  * the underlying primitive already supports - it cannot reach for selectors
@@ -113,7 +126,7 @@ export function defineRecipe<
   // whole point of this generic parameter. See the recipe engine's tests.
   config: RecipeConfig<NoInfer<OwnPropsOf<C>>, E, V>,
 ): ForwardRefExoticComponent<
-  RecipeProps<PolymorphicProps<E, OwnPropsOf<C>>, V> & RefAttributes<unknown>
+  RecipeProps<PolymorphicProps<E, OwnPropsOf<C>>, V> & RecipeRefProp<E>
 > {
   const variants = config.variants ?? ({} as V);
   const variantKeys = Object.keys(variants) as (keyof V & string)[];
@@ -170,6 +183,11 @@ export function defineRecipe<
     merged = { ...merged, ...instanceProps, ref };
 
     if (isDevelopmentBuild()) {
+      const reservedCollisions = RECIPE_RESERVED_ATTRIBUTES.filter((key) => key in instanceProps);
+      if (reservedCollisions.length > 0) {
+        warnReservedAttribute(diagnostics, config.name, reservedCollisions);
+      }
+
       merged["data-fw-recipe"] = config.name;
       if (activeVariants.length > 0) merged["data-fw-variant"] = activeVariants.join(" ");
     }
@@ -180,6 +198,6 @@ export function defineRecipe<
   Recipe.displayName = `Recipe(${config.name})`;
 
   return Recipe as unknown as ForwardRefExoticComponent<
-    RecipeProps<PolymorphicProps<E, OwnPropsOf<C>>, V> & RefAttributes<unknown>
+    RecipeProps<PolymorphicProps<E, OwnPropsOf<C>>, V> & RecipeRefProp<E>
   >;
 }

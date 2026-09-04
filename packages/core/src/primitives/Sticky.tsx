@@ -76,8 +76,8 @@ export const Sticky = forwardRef(function Sticky(
       ref={ref}
       className={cx("fw-Sticky", className)}
       style={finalStyle}
-      {...debugAttributes({ primitive: "Sticky", tokens, unsafeCssCount })}
       {...rest}
+      {...debugAttributes({ primitive: "Sticky", tokens, unsafeCssCount }, rest, diagnostics)}
     >
       {children}
     </Component>

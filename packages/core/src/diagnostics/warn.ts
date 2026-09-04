@@ -37,9 +37,9 @@ export function warnInvalidToken(
   );
 }
 
-export function warnMissingThemeProvider(component: string): void {
+export function warnMissingThemeProvider(mode: DiagnosticsMode, component: string): void {
   warnIfEnabled(
-    "warn",
+    mode,
     `missing-theme-provider:${component}`,
     `<${component}> was rendered without a <ThemeProvider> ancestor. ` +
       `Theme tokens will resolve to nothing until the app is wrapped in <ThemeProvider theme={createTheme(...)}>.`,
@@ -133,6 +133,31 @@ export function warnRecipeVariantCollision(
       `Resolved value:\n${resolvedLines}\n\n` +
       `Variant groups resolve in declaration order (the group declared later in ` +
       `\`variants: {...}\` wins). If that's what you intended, no action is needed.`,
+  );
+}
+
+/**
+ * The `data-fw-*` namespace is reserved for safe-css's own traceability
+ * metadata (`data-fw-primitive`, `data-fw-recipe`, `data-fw-variant`,
+ * `data-fw-tokens`, `data-fw-unsafe-css`). A consumer-supplied attribute in
+ * this namespace never wins - the framework's own value is always applied
+ * last at each call site - so this warns rather than silently accepting
+ * (and dropping) whatever the consumer passed.
+ */
+export function warnReservedAttribute(
+  mode: DiagnosticsMode,
+  component: string,
+  keys: readonly string[],
+): void {
+  if (mode !== "warn" || keys.length === 0) return;
+
+  const plural = keys.length > 1;
+  warnOnce(
+    `reserved-attr:${component}:${keys.join(",")}`,
+    `<${component}> received reserved attribute${plural ? "s" : ""} ${keys.map((k) => `\`${k}\``).join(", ")}. ` +
+      `The \`data-fw-*\` namespace is reserved for safe-css's own traceability metadata - ` +
+      `the framework's own value will be used instead of what you passed. ` +
+      `Use a different attribute name for custom data.`,
   );
 }
 
