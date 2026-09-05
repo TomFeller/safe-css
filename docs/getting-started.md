@@ -107,8 +107,8 @@ section
 rather than repeating:
 
 ```text
-16px
-24px
+18px
+28px
 ```
 
 ---
@@ -226,7 +226,7 @@ Parents describe relationships.
 
 The row uses:
 
-```tsx
+```text
 <Row gap="element" wrap="when-needed">
 ```
 
@@ -351,7 +351,7 @@ That identity becomes useful later when inspecting and grouping impact.
 
 Now change:
 
-```tsx
+```text
 radius: {
   card: "14px",
 },
@@ -359,7 +359,7 @@ radius: {
 
 to:
 
-```tsx
+```text
 radius: {
   card: "20px",
 },
@@ -373,15 +373,15 @@ src/theme.ts
 
 Every rendered Card using:
 
-```tsx
-radius = "card";
+```text
+radius="card"
 ```
 
 now receives the new value.
 
 You did not edit the Card component.
 
-You did not search for `12px`.
+You did not search for `14px`.
 
 You changed the design decision:
 
@@ -853,8 +853,8 @@ Use more specialized primitives for more specialized behavior.
 
 Prefer:
 
-```tsx
-padding = "card";
+```text
+padding="card"
 ```
 
 over:
@@ -871,7 +871,7 @@ when `card` is the real design decision.
 
 Prefer:
 
-```tsx
+```text
 <Stack gap="section">
 ```
 
@@ -929,7 +929,7 @@ Impact Analysis
 
 Continue with:
 
-- **Core Concepts** — the mental model behind safe-css
+- [Core Concepts](core-concepts.md) — the mental model behind safe-css
 - **Layout** — Box, Stack, Row, Grid, ScrollArea, Sticky and Overlay
 - **Theming** — tokens, theme scopes and nested ThemeProviders
 - **Recipes** — reusable semantic components and variants

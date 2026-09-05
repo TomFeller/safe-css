@@ -304,7 +304,7 @@ const theme = createTheme({
 
 The component still says:
 
-```tsx
+```text
 padding="card"
 radius="card"
 ```
@@ -548,8 +548,8 @@ Sometimes you genuinely need CSS that safe-css does not model.
 
 For that, primitives provide:
 
-```tsx
-unsafeCss;
+```text
+unsafeCss
 ```
 
 Example:

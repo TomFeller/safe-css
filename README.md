@@ -14,6 +14,7 @@ New to safe-css?
 
 - [Introduction](docs/introduction.md) — understand why safe-css exists and the problem it is designed to solve.
 - [Getting Started](docs/getting-started.md) — build, inspect, and analyze your first safe-css interface.
+- [Core Concepts](docs/core-concepts.md) — the rules behind the API: ownership, tokens, precedence, and traceability.
 
 ## 1. What problem this solves
 
@@ -314,24 +315,53 @@ This is a small, first-pass heuristic, not a CSS linter — see [`docs/architect
 
 ## 16. Inspector
 
-`@safe-css/inspector` (v0.2.1) is a read-only, development-only visual DOM inspector: click a rendered safe-css element and see, in a docked panel, exactly why it looks the way it does — its primitive, recipe, active variants, its full safe-css ancestry down to the element itself, every token it uses (raw and resolved value, which CSS property uses it), that token's own dependency chain, and any `unsafeCss` in play. Selecting an element keeps it clearly highlighted for as long as its panel stays open, including while picking a different element to compare against — cancelling (**Esc**, or clicking elsewhere) always returns to whatever was selected before, never to a blank slate.
+`@safe-css/inspector` (v0.3.0) is a read-only, development-only tool for understanding rendered safe-css UI.
+
+It answers two related questions:
+
+- **"Why does this element look the way it does?"** — select a rendered safe-css element and inspect its primitive, recipe, active variants, safe-css ancestry, tokens, resolved token values, token dependencies, and any `unsafeCss` in play.
+- **"If I change this token, what currently rendered UI will be affected?"** — run **Impact Analysis** from a token to see the safe-css elements currently rendered in the document that depend on that exact token definition.
+
+Impact Analysis distinguishes **direct** consumers from **indirect** consumers that depend on the token through another token:
+
+```text
+colors.border
+      ↓
+border.subtle
+      ↓
+Card
+```
+
+Results can be grouped by affected recipes and primitives, include the dependency paths that explain the impact, and can be highlighted directly on the rendered page.
+
+Impact Analysis respects theme scopes. The analysis target is not just a token name, but the token definition in its active theme scope, so a matching token resolved from another nested `ThemeProvider` is not incorrectly counted as part of the same change.
+
+Impact Analysis is intentionally based on the **currently rendered DOM**. It does not scan source files, crawl unmounted routes, or retain historical renders.
+
+Install the Inspector as a development dependency:
 
 ```bash
 npm install --save-dev @safe-css/inspector
 ```
 
-Requires a `@safe-css/core` in the `>=0.1.2 <0.2.0` range (the Inspector depends on the exact `data-fw-*`/`--fw-*` DOM contract that version stabilized — see [`docs/architecture.md#core-compatibility`](docs/architecture.md#core-compatibility)).
+It requires `@safe-css/core` in the `>=0.1.2 <0.2.0` range. The Inspector communicates with Core only through the stable development-time `data-fw-*` metadata and `--fw-*` CSS custom-property contract.
 
-**Gate the import behind your build tool's dev flag** — this is the recommended integration, not merely an option. The component itself renders nothing in a production build, but that alone doesn't keep its code out of a production bundle; a bundler ships whatever it can statically see imported, regardless of what a runtime check later decides to render. For Vite:
+**Gate the import behind your build tool's dev flag.** This is the recommended integration, because conditionally rendering the Inspector is not enough to guarantee that its code is excluded from the production bundle.
+
+For Vite:
 
 ```tsx
 import { lazy, Suspense } from "react";
 
 const Inspector = import.meta.env.DEV
-  ? lazy(() => import("@safe-css/inspector").then((m) => ({ default: m.SafeCssInspector })))
+  ? lazy(() =>
+      import("@safe-css/inspector").then((module) => ({
+        default: module.SafeCssInspector,
+      })),
+    )
   : null;
 
-// Anywhere in the tree, doesn't need to be inside ThemeProvider:
+// Anywhere in the tree; it does not need to be inside ThemeProvider.
 {
   Inspector && (
     <Suspense fallback={null}>
@@ -341,11 +371,15 @@ const Inspector = import.meta.env.DEV
 }
 ```
 
-`import.meta.env.DEV` is a compile-time constant Vite replaces with a literal `false` in production, which lets Rollup prove the whole branch — including the dynamic `import()` inside it — is unreachable and tree-shake it away entirely; verified against `apps/demo`'s actual production build, not assumed (see [`docs/architecture.md#inspector`](docs/architecture.md#inspector) for the before/after bundle measurements). Other bundlers need the equivalent shape: a build-time-constant-gated dynamic import, not a runtime conditional around a static one.
+`import.meta.env.DEV` is a build-time constant in Vite, allowing the production build to eliminate the unreachable dynamic import. Other bundlers should use the equivalent pattern: a build-time-constant-gated dynamic import rather than a runtime conditional around a static import.
 
-That's the entire public API otherwise — one component, one optional `enabled` prop, no other configuration. Click **Inspect**, hover a safe-css element to see it highlighted with its primitive/recipe label, click to select it and open the panel.
+The public API is intentionally small: one `SafeCssInspector` component with an optional `enabled` prop.
 
-It reads Core's DOM/CSS output only — the `data-fw-*` attributes and `--fw-*` CSS custom properties described in [Future traceability](docs/architecture.md#future-traceability) — never Core's internals, and never React context; `data-fw-*` metadata itself only exists in development builds of Core in the first place, so there's nothing for the Inspector to read in production even if it were mounted there. See [`docs/architecture.md#inspector`](docs/architecture.md#inspector) for the full architecture, including the Shadow DOM isolation, the picker's DevTools-style event capture, and its stated limitations (no theme editing, no reverse "what uses this token" analysis — that's future blast-radius work, not this).
+Click **Inspect**, hover a safe-css element to identify it, then click to select it. The selected element remains highlighted while its panel is open. Re-picking and cancelling with **Esc** restores the previous selection.
+
+The Inspector reads Core's rendered DOM/CSS output only — never Core internals or React context. Its UI is isolated from the inspected application, and it does not modify application elements to provide inspection or Impact Analysis highlights.
+
+See [`docs/architecture.md#inspector`](docs/architecture.md#inspector) for implementation details and [`docs/getting-started.md`](docs/getting-started.md) for the user-facing workflow.
 
 ## 17. v0.1.2 limitations
 
@@ -366,15 +400,18 @@ It reads Core's DOM/CSS output only — the `data-fw-*` attributes and `--fw-*` 
 
 ```text
 packages/core/       the published @safe-css/core library
-packages/inspector/  the published @safe-css/inspector dev-tool (v0.2.1)
+packages/inspector/  the published @safe-css/inspector dev-tool (v0.3.0)
 apps/demo/           a realistic dashboard app consuming both
 docs/architecture.md    engine internals, precedence, SSR, diagnostics, Inspector, future work
 ```
 
 ## Documentation
 
-- [`docs/architecture.md`](docs/architecture.md) — styling engine, theme token model, precedence, SSR strategy, diagnostics, the Inspector, future traceability.
-- [`apps/demo`](apps/demo) — a full dashboard screen: shell, sidebar, sticky header, responsive card grid, Overlay badges, theme switching, RTL toggle, and the Inspector wired in.
+- [`docs/introduction.md`](docs/introduction.md) — why safe-css exists and the problem it is built around.
+- [`docs/getting-started.md`](docs/getting-started.md) — build, inspect, and analyze your first safe-css interface.
+- [`docs/core-concepts.md`](docs/core-concepts.md) — ownership, tokens, precedence, and traceability.
+- [`docs/architecture.md`](docs/architecture.md) — implementation architecture and internals.
+- [`apps/demo`](apps/demo) — the full working demo.
 
 ## Development
 
