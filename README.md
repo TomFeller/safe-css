@@ -8,6 +8,13 @@ A React + TypeScript styling and layout framework built around one idea: develop
 
 ---
 
+## Start here
+
+New to safe-css?
+
+- [Introduction](docs/introduction.md) — understand why safe-css exists and the problem it is designed to solve.
+- [Getting Started](docs/getting-started.md) — build, inspect, and analyze your first safe-css interface.
+
 ## 1. What problem this solves
 
 Most styling systems eventually let a developer write anything: `position: absolute`, a stray `margin-bottom`, an ad-hoc `z-index`. Each one is individually reasonable and collectively becomes spaghetti — nobody can look at a change and know whether it's local or global, safe or risky.
@@ -25,7 +32,10 @@ safe-css removes that choice at the API level. There is no `display`, `position`
 
 ## 3. Installation
 
-This is a monorepo. The published package is `@safe-css/core`.
+This is a monorepo with two published packages:
+
+- `@safe-css/core` — the styling and layout framework.
+- `@safe-css/inspector` — development-only tooling for inspecting rendered safe-css UI and running Impact Analysis.
 
 ```bash
 npm install @safe-css/core react react-dom
@@ -304,22 +314,7 @@ This is a small, first-pass heuristic, not a CSS linter — see [`docs/architect
 
 ## 16. Inspector
 
-`@safe-css/inspector` (v0.3) is a read-only, development-only visual DOM inspector. It answers two questions:
-
-- **"Why does this element look the way it does?"** — click a rendered safe-css element and see, in a docked panel, its primitive, recipe, active variants, its full safe-css ancestry down to the element itself, every token it uses (raw and resolved value, which CSS property uses it), that token's own dependency chain, and any `unsafeCss` in play. Selecting an element keeps it clearly highlighted for as long as its panel stays open, including while picking a different element to compare against — cancelling (**Esc**, or clicking elsewhere) always returns to whatever was selected before, never to a blank slate.
-- **"If I change this token, what currently rendered UI will be affected?"** — click **Analyze impact** next to any token (including one nested inside another token's own dependency tree, like `colors.border` under `border.subtle`) to see every safe-css element _currently rendered in the document_ that depends on it, split into **direct** (uses the token itself) and **indirect** (uses a token that depends on it), grouped by recipe and primitive, with the exact dependency path explaining each group and an optional overlay highlighting every affected element on the page. This is explicitly a snapshot of what's rendered right now — not source code, not other routes, not history - and the panel says so.
-
-```text
-radius.card  →  Analyze impact  →  Rendered impact: 18 affected elements
-                                     Direct 18 · Indirect 0
-                                     Card ×18
-```
-
-```text
-colors.border  →  Analyze impact  →  Rendered impact: 42 affected elements
-                                       Direct 4 · Indirect 38
-                                       colors.border └─ border.subtle └─ Card ×18
-```
+`@safe-css/inspector` (v0.2.1) is a read-only, development-only visual DOM inspector: click a rendered safe-css element and see, in a docked panel, exactly why it looks the way it does — its primitive, recipe, active variants, its full safe-css ancestry down to the element itself, every token it uses (raw and resolved value, which CSS property uses it), that token's own dependency chain, and any `unsafeCss` in play. Selecting an element keeps it clearly highlighted for as long as its panel stays open, including while picking a different element to compare against — cancelling (**Esc**, or clicking elsewhere) always returns to whatever was selected before, never to a blank slate.
 
 ```bash
 npm install --save-dev @safe-css/inspector
@@ -350,7 +345,7 @@ const Inspector = import.meta.env.DEV
 
 That's the entire public API otherwise — one component, one optional `enabled` prop, no other configuration. Click **Inspect**, hover a safe-css element to see it highlighted with its primitive/recipe label, click to select it and open the panel.
 
-It reads Core's DOM/CSS output only — the `data-fw-*` attributes and `--fw-*` CSS custom properties described in [Future traceability](docs/architecture.md#future-traceability) — never Core's internals, and never React context; `data-fw-*` metadata itself only exists in development builds of Core in the first place, so there's nothing for the Inspector to read in production even if it were mounted there. See [`docs/architecture.md#inspector`](docs/architecture.md#inspector) for the full architecture, including the Shadow DOM isolation, the picker's DevTools-style event capture, the nested-`ThemeProvider`-correct Impact Analysis algorithm, and its stated limitations (rendered DOM only, no editing, no risk scoring — see [Impact Analysis limitations](docs/architecture.md#limitations)).
+It reads Core's DOM/CSS output only — the `data-fw-*` attributes and `--fw-*` CSS custom properties described in [Future traceability](docs/architecture.md#future-traceability) — never Core's internals, and never React context; `data-fw-*` metadata itself only exists in development builds of Core in the first place, so there's nothing for the Inspector to read in production even if it were mounted there. See [`docs/architecture.md#inspector`](docs/architecture.md#inspector) for the full architecture, including the Shadow DOM isolation, the picker's DevTools-style event capture, and its stated limitations (no theme editing, no reverse "what uses this token" analysis — that's future blast-radius work, not this).
 
 ## 17. v0.1.2 limitations
 
@@ -359,7 +354,7 @@ It reads Core's DOM/CSS output only — the `data-fw-*` attributes and `--fw-*` 
 - **Recipe variant values aren't always compile-time-validated** against the underlying primitive's props (only `base` reliably is) — a deliberate trade-off documented in [`docs/architecture.md`](docs/architecture.md#recipes). Opt in with `satisfies RecipeVariantMap<P>` for the stricter check.
 - **A recipe's element (and therefore its DOM prop/`ref` typing) is fixed by `base.as`, not overridable per instance.** DOM props and `ref` are both correctly typed for the recipe's own element as of v0.1.2 (see [Recipes](#13-recipes)); instance-level polymorphic `as` on a recipe remains untyped.
 - **No compound variants** in `defineRecipe`.
-- **No blast-radius UI.** The metadata to build one (`data-fw-primitive`, `data-fw-recipe`, `data-fw-variant`, `data-fw-tokens`, `data-fw-unsafe-css`, dev-only, and reserved from consumer overwrite - see [Core rules](#15-core-rules)) is there; the analysis/visualization tool is not — see [`docs/architecture.md`](docs/architecture.md#future-traceability).
+- **Impact Analysis is rendered-DOM-only.** It analyzes safe-css elements currently rendered in the document. It does not scan source code, crawl unmounted routes, or retain historical renders, so its counts describe the UI that exists right now rather than every possible usage in the repository. See [Inspector](#16-inspector) and [`docs/architecture.md`](docs/architecture.md#limitations).
 - **No portal-aware primitives yet.** Modal/Tooltip/Popover/Toast are still out of scope, and CSS custom-property inheritance doesn't cross a React portal boundary into `document.body`. The architecture is prepared for this (see [`docs/architecture.md#portals`](docs/architecture.md#portals)) but nothing consumes it yet.
 - **`unsafeCss`'s suspicious-pattern detection is a small, fixed heuristic, not a linter.** It catches known risky patterns (margin, raw z-index, layout bypasses, arbitrary values with a token equivalent); it does not attempt general CSS analysis.
 - **The theme value-only render optimization only removes `ThemeMetaContext`-driven re-renders** (see [`docs/architecture.md#render-architecture`](docs/architecture.md#render-architecture)); it does not, and isn't meant to, prevent a component from re-rendering because its own parent did.
@@ -371,7 +366,7 @@ It reads Core's DOM/CSS output only — the `data-fw-*` attributes and `--fw-*` 
 
 ```text
 packages/core/       the published @safe-css/core library
-packages/inspector/  the published @safe-css/inspector dev-tool (v0.3)
+packages/inspector/  the published @safe-css/inspector dev-tool (v0.2.1)
 apps/demo/           a realistic dashboard app consuming both
 docs/architecture.md    engine internals, precedence, SSR, diagnostics, Inspector, future work
 ```
