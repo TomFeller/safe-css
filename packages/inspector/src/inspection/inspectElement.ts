@@ -59,7 +59,8 @@ function inspectToken(element: HTMLElement, token: string): InspectedToken {
   const lookup: VariableLookup = (variable) =>
     findNearestVariableDefinition(element, variable)?.rawValue ?? null;
 
-  const rawValue = lookup(cssVariable) ?? undefined;
+  const definition = findNearestVariableDefinition(element, cssVariable);
+  const rawValue = definition?.rawValue;
   const resolvedValue = rawValue !== undefined ? resolveTokenValue(rawValue, lookup) : undefined;
   const dependencyTree = buildDependencyTree(cssVariable, lookup);
 
@@ -70,6 +71,7 @@ function inspectToken(element: HTMLElement, token: string): InspectedToken {
     rawValue,
     resolvedValue,
     dependencies: dependencyTree?.children ?? [],
+    owner: definition?.owner,
   };
 }
 

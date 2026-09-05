@@ -9,6 +9,8 @@ export interface InspectorPanelProps {
   stale: boolean;
   onRefresh: () => void;
   onClose: () => void;
+  /** Wires up each token's "Analyze impact" action (v0.3). Omit to disable the affordance entirely. */
+  onAnalyzeImpact?: (token: string) => void;
 }
 
 /**
@@ -18,7 +20,13 @@ export interface InspectorPanelProps {
  * the spec calls for: Element, Safe CSS ancestry, Tokens, Token
  * dependencies, Custom CSS.
  */
-export function InspectorPanel({ inspected, stale, onRefresh, onClose }: InspectorPanelProps) {
+export function InspectorPanel({
+  inspected,
+  stale,
+  onRefresh,
+  onClose,
+  onAnalyzeImpact,
+}: InspectorPanelProps) {
   return (
     <div className="fw-inspector-panel">
       <div className="fw-inspector-panel-header">
@@ -42,8 +50,8 @@ export function InspectorPanel({ inspected, stale, onRefresh, onClose }: Inspect
         )}
         <ElementSection element={inspected} />
         <AncestrySection element={inspected} />
-        <TokensSection tokens={inspected.tokens} />
-        <TokenDependenciesSection tokens={inspected.tokens} />
+        <TokensSection tokens={inspected.tokens} onAnalyzeImpact={onAnalyzeImpact} />
+        <TokenDependenciesSection tokens={inspected.tokens} onAnalyzeImpact={onAnalyzeImpact} />
         <UnsafeCssSection unsafeCss={inspected.unsafeCss} />
       </div>
     </div>

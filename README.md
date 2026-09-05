@@ -304,7 +304,22 @@ This is a small, first-pass heuristic, not a CSS linter — see [`docs/architect
 
 ## 16. Inspector
 
-`@safe-css/inspector` (v0.2.1) is a read-only, development-only visual DOM inspector: click a rendered safe-css element and see, in a docked panel, exactly why it looks the way it does — its primitive, recipe, active variants, its full safe-css ancestry down to the element itself, every token it uses (raw and resolved value, which CSS property uses it), that token's own dependency chain, and any `unsafeCss` in play. Selecting an element keeps it clearly highlighted for as long as its panel stays open, including while picking a different element to compare against — cancelling (**Esc**, or clicking elsewhere) always returns to whatever was selected before, never to a blank slate.
+`@safe-css/inspector` (v0.3) is a read-only, development-only visual DOM inspector. It answers two questions:
+
+- **"Why does this element look the way it does?"** — click a rendered safe-css element and see, in a docked panel, its primitive, recipe, active variants, its full safe-css ancestry down to the element itself, every token it uses (raw and resolved value, which CSS property uses it), that token's own dependency chain, and any `unsafeCss` in play. Selecting an element keeps it clearly highlighted for as long as its panel stays open, including while picking a different element to compare against — cancelling (**Esc**, or clicking elsewhere) always returns to whatever was selected before, never to a blank slate.
+- **"If I change this token, what currently rendered UI will be affected?"** — click **Analyze impact** next to any token (including one nested inside another token's own dependency tree, like `colors.border` under `border.subtle`) to see every safe-css element _currently rendered in the document_ that depends on it, split into **direct** (uses the token itself) and **indirect** (uses a token that depends on it), grouped by recipe and primitive, with the exact dependency path explaining each group and an optional overlay highlighting every affected element on the page. This is explicitly a snapshot of what's rendered right now — not source code, not other routes, not history - and the panel says so.
+
+```text
+radius.card  →  Analyze impact  →  Rendered impact: 18 affected elements
+                                     Direct 18 · Indirect 0
+                                     Card ×18
+```
+
+```text
+colors.border  →  Analyze impact  →  Rendered impact: 42 affected elements
+                                       Direct 4 · Indirect 38
+                                       colors.border └─ border.subtle └─ Card ×18
+```
 
 ```bash
 npm install --save-dev @safe-css/inspector
@@ -335,7 +350,7 @@ const Inspector = import.meta.env.DEV
 
 That's the entire public API otherwise — one component, one optional `enabled` prop, no other configuration. Click **Inspect**, hover a safe-css element to see it highlighted with its primitive/recipe label, click to select it and open the panel.
 
-It reads Core's DOM/CSS output only — the `data-fw-*` attributes and `--fw-*` CSS custom properties described in [Future traceability](docs/architecture.md#future-traceability) — never Core's internals, and never React context; `data-fw-*` metadata itself only exists in development builds of Core in the first place, so there's nothing for the Inspector to read in production even if it were mounted there. See [`docs/architecture.md#inspector`](docs/architecture.md#inspector) for the full architecture, including the Shadow DOM isolation, the picker's DevTools-style event capture, and its stated limitations (no theme editing, no reverse "what uses this token" analysis — that's future blast-radius work, not this).
+It reads Core's DOM/CSS output only — the `data-fw-*` attributes and `--fw-*` CSS custom properties described in [Future traceability](docs/architecture.md#future-traceability) — never Core's internals, and never React context; `data-fw-*` metadata itself only exists in development builds of Core in the first place, so there's nothing for the Inspector to read in production even if it were mounted there. See [`docs/architecture.md#inspector`](docs/architecture.md#inspector) for the full architecture, including the Shadow DOM isolation, the picker's DevTools-style event capture, the nested-`ThemeProvider`-correct Impact Analysis algorithm, and its stated limitations (rendered DOM only, no editing, no risk scoring — see [Impact Analysis limitations](docs/architecture.md#limitations)).
 
 ## 17. v0.1.2 limitations
 
@@ -356,7 +371,7 @@ It reads Core's DOM/CSS output only — the `data-fw-*` attributes and `--fw-*` 
 
 ```text
 packages/core/       the published @safe-css/core library
-packages/inspector/  the published @safe-css/inspector dev-tool (v0.2.1)
+packages/inspector/  the published @safe-css/inspector dev-tool (v0.3)
 apps/demo/           a realistic dashboard app consuming both
 docs/architecture.md    engine internals, precedence, SSR, diagnostics, Inspector, future work
 ```

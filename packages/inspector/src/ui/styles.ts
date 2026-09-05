@@ -276,6 +276,34 @@ export const INSPECTOR_STYLES = `
   font-weight: 600;
 }
 
+.fw-inspector-token-name-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.fw-inspector-link-button {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: #a855f7;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.fw-inspector-link-button:hover {
+  text-decoration: underline;
+}
+
+.fw-inspector-dependency-impact-button {
+  margin-left: 8px;
+}
+
 .fw-inspector-tree {
   list-style: none;
   margin: 4px 0 0;
@@ -296,5 +324,83 @@ export const INSPECTOR_STYLES = `
   margin-top: 6px;
   font-size: 11px;
   color: #d9a441;
+}
+
+/* ---------- impact analysis ---------- */
+
+.fw-inspector-impact-note {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #201a2e;
+  border: 1px solid #3a2e52;
+  font-size: 11px;
+  color: #c9b8e8;
+}
+
+.fw-inspector-impact-headline {
+  margin: 12px 0;
+  text-align: center;
+}
+
+.fw-inspector-impact-headline-count {
+  font-size: 32px;
+  font-weight: 700;
+  color: #a855f7;
+  line-height: 1;
+}
+
+.fw-inspector-impact-headline-label {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #9a9a9a;
+}
+
+.fw-inspector-impact-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.fw-inspector-impact-stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #1f1f1f;
+  border: 1px solid #262626;
+}
+
+.fw-inspector-impact-subheading {
+  margin-top: 16px;
+}
+
+.fw-inspector-impact-breakdown {
+  color: #9a9a9a;
+  font-size: 11px;
+}
+
+.fw-inspector-impact-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.fw-inspector-impact-highlight {
+  position: fixed;
+  pointer-events: none;
+}
+
+.fw-inspector-impact-highlight.direct {
+  border: 2px solid #a855f7;
+  background: rgba(168, 85, 247, 0.14);
+}
+
+.fw-inspector-impact-highlight.indirect {
+  border: 2px dashed #a855f7;
+  background: rgba(168, 85, 247, 0.06);
 }
 `;

@@ -8,13 +8,23 @@ import {
 } from "../internal/inspectorRoot";
 import { createPickerController } from "../picker/pickerController";
 import { HighlightOverlay } from "../picker/HighlightOverlay";
+import { ImpactHighlightLayer } from "../picker/ImpactHighlightLayer";
 import { describeElement } from "../inspection/metadata";
 import { inspectElement } from "../inspection/inspectElement";
+import { analyzeImpact, buildImpactTarget } from "../impact/analyzeImpact";
 import { InspectorPanel } from "../ui/InspectorPanel";
+import { ImpactPanel } from "../ui/ImpactPanel";
 import { INSPECTOR_STYLES } from "../ui/styles";
 import type { InspectedElement } from "../types";
+import type { ImpactAnalysis } from "../impact/types";
 
 type InspectorState = "idle" | "picking" | "selected";
+type PanelMode = "element" | "impact";
+
+const IMPACT_UNAVAILABLE_MESSAGE =
+  "No active safe-css token definition could be found for this element.";
+const IMPACT_SCOPE_GONE_MESSAGE =
+  "This theme scope is no longer available. Run a new inspection to start another Impact Analysis.";
 
 interface InspectorAppProps {
   host: HTMLElement;
@@ -28,6 +38,18 @@ function InspectorApp({ host }: InspectorAppProps) {
   // It is preserved (not cleared) across a "picking" excursion, and only
   // ever cleared by Close - see `cancelPicking` and `handleLauncherClick`.
   const [inspected, setInspected] = useState<InspectedElement | null>(null);
+
+  // Impact Analysis (v0.3) state. `panelMode` is deliberately orthogonal to
+  // `state`: it is only meaningful while `state === "selected"`, and - like
+  // `inspected` - is left untouched by a picking excursion, so cancelling a
+  // re-pick started from Impact mode returns to that same Impact view, not
+  // to Element mode. Choosing a genuinely new element (`onSelect` below) is
+  // the one thing that resets it, per the product rule that Impact Analysis
+  // is never carried over onto a different selection automatically.
+  const [panelMode, setPanelMode] = useState<PanelMode>("element");
+  const [impact, setImpact] = useState<ImpactAnalysis | null>(null);
+  const [impactError, setImpactError] = useState<string | null>(null);
+  const [highlightAffected, setHighlightAffected] = useState(false);
 
   // Kept in sync (in its own effect, not during render - React forbids
   // writing a ref's `.current` while rendering) so the picking effect below
@@ -57,6 +79,13 @@ function InspectorApp({ host }: InspectorAppProps) {
       onHover: setHovered,
       onSelect: (element) => {
         setInspected(inspectElement(element));
+        // A newly picked element invalidates any Impact Analysis, which was
+        // about a token on the *previous* element - never carried over
+        // automatically (the product's own explicit rule).
+        setPanelMode("element");
+        setImpact(null);
+        setImpactError(null);
+        setHighlightAffected(false);
         setState("selected");
       },
       onCancel: cancelPicking,
@@ -69,12 +98,16 @@ function InspectorApp({ host }: InspectorAppProps) {
   function handleLauncherClick() {
     if (state === "idle") setState("picking");
     else if (state === "picking") cancelPicking();
-    else setState("picking"); // selected -> re-pick; `inspected` stays as-is
+    else setState("picking"); // selected -> re-pick; inspected/impact stay as-is
   }
 
   function handleClosePanel() {
     setState("idle");
     setInspected(null);
+    setPanelMode("element");
+    setImpact(null);
+    setImpactError(null);
+    setHighlightAffected(false);
   }
 
   function handleRefresh() {
@@ -96,8 +129,50 @@ function InspectorApp({ host }: InspectorAppProps) {
     setInspected(inspectElement(inspected.element));
   }
 
+  function handleAnalyzeImpact(token: string) {
+    if (!inspected) return;
+
+    const target = buildImpactTarget(inspected.element, token);
+    if (!target) {
+      setImpact(null);
+      setImpactError(IMPACT_UNAVAILABLE_MESSAGE);
+      setPanelMode("impact");
+      return;
+    }
+
+    setImpact(analyzeImpact(target));
+    setImpactError(null);
+    setHighlightAffected(false);
+    setPanelMode("impact");
+  }
+
+  function handleBackToElement() {
+    setPanelMode("element");
+  }
+
+  function handleRefreshImpact() {
+    if (!impact) return;
+
+    if (!impact.target.owner.isConnected) {
+      setImpactError(IMPACT_SCOPE_GONE_MESSAGE);
+      return;
+    }
+
+    setImpact(analyzeImpact(impact.target));
+    setImpactError(null);
+  }
+
+  function handleToggleHighlight() {
+    setHighlightAffected((current) => !current);
+  }
+
   const picking = state === "picking";
   const showPanel = state === "selected" && inspected !== null;
+  const launcherLabel = picking
+    ? "Cancel (Esc)"
+    : state === "selected"
+      ? "Pick another"
+      : "Inspect";
 
   return (
     <div className="fw-inspector-root">
@@ -107,7 +182,7 @@ function InspectorApp({ host }: InspectorAppProps) {
         onClick={handleLauncherClick}
       >
         <span className="fw-inspector-launcher-dot" />
-        {picking ? "Cancel (Esc)" : "Inspect"}
+        {launcherLabel}
       </button>
 
       {picking && (
@@ -119,7 +194,8 @@ function InspectorApp({ host }: InspectorAppProps) {
       {/* Rendered before the hover highlight below so hover visually
           supersedes it when the two coincide (e.g. re-hovering the already-
           selected element during re-pick). Persists across picking/selected
-          alike - only Close clears `inspected` and hides it. */}
+          alike, and across Element/Impact mode - only Close clears
+          `inspected` and hides it. */}
       {inspected && inspected.element.isConnected && (
         <HighlightOverlay
           element={inspected.element}
@@ -132,11 +208,30 @@ function InspectorApp({ host }: InspectorAppProps) {
         <HighlightOverlay element={hovered} label={describeElement(hovered)} />
       )}
 
-      {showPanel && inspected && (
+      {panelMode === "impact" && highlightAffected && impact && (
+        <ImpactHighlightLayer
+          targets={impact.affected.map((el) => ({ element: el.element, kind: el.kind }))}
+        />
+      )}
+
+      {showPanel && inspected && panelMode === "element" && (
         <InspectorPanel
           inspected={inspected}
           stale={!inspected.element.isConnected}
           onRefresh={handleRefresh}
+          onClose={handleClosePanel}
+          onAnalyzeImpact={handleAnalyzeImpact}
+        />
+      )}
+
+      {showPanel && panelMode === "impact" && (
+        <ImpactPanel
+          analysis={impact}
+          error={impactError}
+          highlightAffected={highlightAffected}
+          onToggleHighlight={handleToggleHighlight}
+          onRefresh={handleRefreshImpact}
+          onBackToElement={handleBackToElement}
           onClose={handleClosePanel}
         />
       )}

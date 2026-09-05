@@ -49,6 +49,8 @@ export interface InspectedToken extends TokenIdentity {
   resolvedValue?: string;
   /** This token's own dependencies (i.e. `buildDependencyTree(...).children`). */
   dependencies: DependencyTreeNode[];
+  /** The DOM node where this token's `--fw-*` variable is actually defined (its "theme scope") - the same node `rawValue` was read from. Undefined if no definition was found. Powers Impact Analysis (v0.3): analyzing a token targets this exact owner, not just the token name - see docs/architecture.md#impact-analysis. */
+  owner?: HTMLElement;
 }
 
 export interface UnsafeCssProperty {
