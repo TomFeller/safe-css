@@ -930,7 +930,7 @@ Impact Analysis
 Continue with:
 
 - [Core Concepts](core-concepts.md) — the mental model behind safe-css
-- **Layout** — Box, Stack, Row, Grid, ScrollArea, Sticky and Overlay
+- [Layout](layout.md) — Box, Stack, Row, Grid, ScrollArea, Sticky and Overlay
 - **Theming** — tokens, theme scopes and nested ThemeProviders
 - **Recipes** — reusable semantic components and variants
 - **Inspector** — understanding rendered styling

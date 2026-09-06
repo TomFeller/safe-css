@@ -15,6 +15,7 @@ New to safe-css?
 - [Introduction](docs/introduction.md) — understand why safe-css exists and the problem it is designed to solve.
 - [Getting Started](docs/getting-started.md) — build, inspect, and analyze your first safe-css interface.
 - [Core Concepts](docs/core-concepts.md) — the rules behind the API: ownership, tokens, precedence, and traceability.
+- [Layout](docs/layout.md) — which primitive to choose for a given layout problem, and why.
 
 ## 1. What problem this solves
 
@@ -410,6 +411,7 @@ docs/architecture.md    engine internals, precedence, SSR, diagnostics, Inspecto
 - [`docs/introduction.md`](docs/introduction.md) — why safe-css exists and the problem it is built around.
 - [`docs/getting-started.md`](docs/getting-started.md) — build, inspect, and analyze your first safe-css interface.
 - [`docs/core-concepts.md`](docs/core-concepts.md) — ownership, tokens, precedence, and traceability.
+- [`docs/layout.md`](docs/layout.md) — which primitive to choose for a given layout problem, and why.
 - [`docs/architecture.md`](docs/architecture.md) — implementation architecture and internals.
 - [`apps/demo`](apps/demo) — the full working demo.
 
