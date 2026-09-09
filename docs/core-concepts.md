@@ -103,6 +103,8 @@ They exist to give common styling behaviors a stable meaning.
 
 Many CSS problems are ownership problems.
 
+The clearest example is spacing between siblings.
+
 For example:
 
 ```tsx
@@ -143,17 +145,7 @@ Now the Card describes itself.
 
 The Stack describes how the Cards relate to each other.
 
----
-
-# 4. Parent-owned spacing
-
-This rule is important enough to state separately:
-
-> **Sibling spacing belongs to the parent layout.**
-
-safe-css therefore does not expose public margin props.
-
-Use:
+This rule matters enough that safe-css does not expose public margin props at all. Use:
 
 ```text
 <Stack gap="section">
@@ -187,7 +179,7 @@ owns relationships between children
 
 ---
 
-# 5. Semantic tokens represent design decisions
+# 4. Semantic tokens represent design decisions
 
 A literal value answers:
 
@@ -236,7 +228,7 @@ The component only needs to know:
 
 ---
 
-# 6. Tokens make design changes explicit
+# 5. Tokens make design changes explicit
 
 Suppose the design changes:
 
@@ -282,7 +274,7 @@ you can ask:
 
 ---
 
-# 7. Tokens can depend on other tokens
+# 6. Tokens can depend on other tokens
 
 Design decisions are not always independent.
 
@@ -335,7 +327,7 @@ instead of treating every final CSS value as unrelated.
 
 ---
 
-# 8. Theme scopes follow CSS inheritance
+# 7. Theme scopes follow CSS inheritance
 
 safe-css themes are implemented with CSS custom properties.
 
@@ -378,9 +370,11 @@ That distinction matters when analyzing change impact.
 
 ---
 
-# 9. A nested ThemeProvider is a new theme
+# 8. A nested ThemeProvider is a new theme
 
-One important implementation detail:
+You might reach for a nested `ThemeProvider` to give one part of a UI its own design values — a branded subtree, an embedded widget, or a preview panel showing a different theme — without touching the theme anywhere else.
+
+Before doing that, one important implementation detail matters:
 
 A nested `ThemeProvider` does not partially inherit custom safe-css theme values from the provider above it.
 
@@ -413,7 +407,7 @@ The important mental model is:
 
 ---
 
-# 10. Behavior belongs to specialized primitives
+# 9. Behavior belongs to specialized primitives
 
 `Box` is deliberately not a generic CSS container.
 
@@ -463,7 +457,7 @@ A behavior-oriented primitive can encode the whole safe pattern instead of expos
 
 ---
 
-# 11. Prefer intrinsic behavior
+# 10. Prefer intrinsic behavior
 
 Responsive design does not always require named breakpoints.
 
@@ -493,7 +487,7 @@ The rule is:
 
 ---
 
-# 12. Recipes give repeated decisions an identity
+# 11. Recipes give repeated decisions an identity
 
 Primitives describe behavior.
 
@@ -536,7 +530,7 @@ instead of reporting only anonymous `Box` elements.
 
 ---
 
-# 13. Recipes do not create a second styling language
+# 12. Recipes do not create a second styling language
 
 A recipe can only compose styling decisions already supported by its underlying primitive.
 
@@ -556,7 +550,7 @@ This keeps the same mental model from primitive usage through higher-level produ
 
 ---
 
-# 14. Precedence is deterministic
+# 13. Precedence is deterministic
 
 When several safe-css layers contribute to the same property, precedence is explicit:
 
@@ -605,7 +599,7 @@ It is deterministic JavaScript-level merging.
 
 ---
 
-# 15. Variants express meaningful differences
+# 14. Variants express meaningful differences
 
 Recipes can expose variants when a product concept has a small number of meaningful states.
 
@@ -641,7 +635,7 @@ This is the same intent-first principle applied at the recipe level.
 
 ---
 
-# 16. unsafeCss is an explicit boundary
+# 15. unsafeCss is an explicit boundary
 
 safe-css cannot and should not model every possible styling requirement.
 
@@ -679,7 +673,7 @@ So the boundary should remain visible.
 
 ---
 
-# 17. An escape hatch should remain an escape hatch
+# 16. An escape hatch should remain an escape hatch
 
 If `unsafeCss` became the normal way to style every element:
 
@@ -718,7 +712,7 @@ Use Box + unsafeCss for everything.
 
 ---
 
-# 18. Rendered styling remains traceable
+# 17. Rendered styling remains traceable
 
 safe-css primitives emit development metadata describing the decisions that produced the rendered element.
 
@@ -746,7 +740,7 @@ It is to preserve enough structure to explain that CSS later.
 
 ---
 
-# 19. Inspector answers why
+# 18. Inspector answers why
 
 Consider a rendered Card.
 
@@ -798,7 +792,7 @@ The Inspector answers:
 
 ---
 
-# 20. Impact Analysis answers where
+# 19. Impact Analysis answers where
 
 Once you understand a styling decision, the next question is:
 
@@ -836,7 +830,7 @@ and optionally highlight affected rendered elements on the page.
 
 ---
 
-# 21. Impact is scoped and rendered
+# 20. Impact is scoped and rendered
 
 Impact Analysis deliberately does not claim more knowledge than it has.
 
@@ -873,7 +867,7 @@ token name
 
 ---
 
-# 22. Change safety comes from visibility, not prohibition
+# 21. Change safety comes from visibility, not prohibition
 
 safe-css cannot guarantee that every UI change will look good.
 
@@ -904,7 +898,7 @@ That visibility is the foundation for safer change.
 
 ---
 
-# 23. The safe-css decision process
+# 22. The safe-css decision process
 
 When building UI, use this sequence.
 

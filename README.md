@@ -16,6 +16,8 @@ New to safe-css?
 - [Getting Started](docs/getting-started.md) — build, inspect, and analyze your first safe-css interface.
 - [Core Concepts](docs/core-concepts.md) — the rules behind the API: ownership, tokens, precedence, and traceability.
 - [Layout](docs/layout.md) — which primitive to choose for a given layout problem, and why.
+- [API Reference](docs/api-reference.md) — every prop, default, and value, exhaustively.
+- [Tokens](docs/tokens.md) — every built-in design token and its value.
 
 ## 1. What problem this solves
 
@@ -34,6 +36,8 @@ safe-css removes that choice at the API level. There is no `display`, `position`
 
 ## 3. Installation
 
+Using safe-css in your own application only requires installing the packages below — you do not need to clone this repository. (If you want to run or contribute to the safe-css repository itself, see [Development](#development) at the end of this document.)
+
 This is a monorepo with two published packages:
 
 - `@safe-css/core` — the styling and layout framework.
@@ -49,7 +53,11 @@ Import the stylesheet once, anywhere near your app's entry point:
 import "@safe-css/core/styles.css";
 ```
 
+If you're running the included [`apps/demo`](apps/demo) rather than your own application, this import is already present in `apps/demo/src/main.tsx` — you don't need to add it again.
+
 ## 4. Quick start
+
+The example below shows how the main pieces — theme, primitives, and a recipe — fit together in one file. It's meant to be read, not copied verbatim into your app.
 
 ```tsx
 import {
@@ -132,6 +140,8 @@ declare module "@safe-css/core" {
   }
 }
 ```
+
+A practical place for this is `src/theme.ts`, alongside your `createTheme()` call — detailed theming guidance will get its own document later, so this section stays intentionally brief.
 
 Declaration merging only changes what TypeScript _accepts_ — it can't guarantee the _runtime_ theme actually defines `xl` (types don't exist at runtime, so nothing can mechanically check that for you; see [`docs/architecture.md#custom-tokens`](docs/architecture.md#custom-tokens) for exactly why). Two things keep this safe in practice:
 
@@ -265,7 +275,9 @@ const Card = defineRecipe(Box, {
 
 A recipe may only set props the underlying primitive already supports, cannot introduce selectors (`"& > *"`, `".foo"`, etc. are not part of this API), and there is no compound-variant engine in v0.1. See [`docs/architecture.md`](docs/architecture.md#recipes) for the one narrow TypeScript limitation this design has (variant _values_ aren't always compile-time-checked against the primitive's props the way `base` is — a documented, deliberate trade-off, not an oversight; teams that want the guarantee back can opt in with `variants: {...} satisfies RecipeVariantMap<BoxProps>`).
 
-Setting `as` inside `base` changes the recipe's element _and_ its DOM prop typing - `defineRecipe(Box, { name: "ButtonLike", base: { as: "button" } })` produces a component that accepts `type`, `disabled`, and a correctly-typed `onClick`, not just `div` props. **Its `ref` is correctly typed too (v0.1.2):** `<ButtonLike ref={buttonRef} />` requires `buttonRef: Ref<HTMLButtonElement>` and rejects `Ref<HTMLAnchorElement>` at compile time - v0.1.1 got the DOM props right but left `ref` typed as `RefAttributes<unknown>`, which (since every element type is assignable to `unknown`) accepted _any_ ref regardless of the recipe's actual element, silently. That's fixed by building the recipe's `ref` prop the same way every primitive already builds its own, keyed off the same element-type parameter that drives the DOM props - see [`docs/architecture.md#recipes`](docs/architecture.md#recipes) for the exact mechanism. What's still not typed: overriding `as` at the _instance_ level on an already-defined recipe (e.g. rendering a `ButtonLike` as an `<a>` for one particular instance) - that remains untyped, same as v0.1.1; a recipe's element and ref/DOM-prop shape are fixed by its `base.as`, not re-inferable per instance.
+Setting `as` inside `base` changes the recipe's element _and_ its DOM prop typing — `defineRecipe(Box, { name: "ButtonLike", base: { as: "button" } })` produces a component that accepts `type`, `disabled`, a correctly-typed `onClick`, and a correctly-typed `ref` (`Ref<HTMLButtonElement>`, not just generic `div` props/`ref`). See [`docs/architecture.md#recipes`](docs/architecture.md#recipes) for how this is implemented.
+
+Current limitation: overriding `as` at the _instance_ level on an already-defined recipe (e.g. rendering a `ButtonLike` as an `<a>` for one particular usage) is not typed — a recipe's element and DOM prop/`ref` shape are fixed by its `base.as`, not re-inferable per instance.
 
 If two different variant groups are both active and both set the same underlying prop (e.g. a `size` variant and a `density` variant both setting `padding`), resolution is always deterministic — the group declared later in `variants: {...}` wins, the same left-to-right rule as any other merge in this engine — and development builds warn about the collision so it's never a surprise:
 
@@ -316,7 +328,7 @@ This is a small, first-pass heuristic, not a CSS linter — see [`docs/architect
 
 ## 16. Inspector
 
-`@safe-css/inspector` (v0.3.0) is a read-only, development-only tool for understanding rendered safe-css UI.
+`@safe-css/inspector` (v0.3.0) is development-only inspection tooling: it reads and explains rendered safe-css styling without editing your application's styles or theme.
 
 It answers two related questions:
 
@@ -412,16 +424,27 @@ docs/architecture.md    engine internals, precedence, SSR, diagnostics, Inspecto
 - [`docs/getting-started.md`](docs/getting-started.md) — build, inspect, and analyze your first safe-css interface.
 - [`docs/core-concepts.md`](docs/core-concepts.md) — ownership, tokens, precedence, and traceability.
 - [`docs/layout.md`](docs/layout.md) — which primitive to choose for a given layout problem, and why.
+- [`docs/api-reference.md`](docs/api-reference.md) — every prop, default, and value, exhaustively.
+- [`docs/tokens.md`](docs/tokens.md) — every built-in design token and its value.
 - [`docs/architecture.md`](docs/architecture.md) — implementation architecture and internals.
 - [`apps/demo`](apps/demo) — the full working demo.
 
 ## Development
 
+This section is for working on the safe-css repository itself — building the packages, running the demo app, or contributing. If you only want to use safe-css in your own application, see [Installation](#3-installation) above; you do not need to clone this repository.
+
 ```bash
+git clone https://github.com/TomFeller/safe-css.git
+cd safe-css
 npm install
+npm run dev
+```
+
+`npm run dev` starts the demo app in `apps/demo`. Other useful commands:
+
+```bash
 npm run build       # build @safe-css/core, @safe-css/inspector, then the demo
 npm test            # run core's and inspector's test suites
 npm run typecheck   # typecheck core + inspector + demo
 npm run lint         # eslint across the whole workspace
-npm run dev          # start the demo app
 ```

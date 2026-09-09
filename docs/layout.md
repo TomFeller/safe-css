@@ -8,7 +8,7 @@ This document answers the question you actually have when you sit down to build 
 
 > **Which primitive should I choose for this layout problem, and why?**
 
-It is not an exhaustive API reference. `docs/core-concepts.md` already covers the rules behind the API (ownership, tokens, precedence). This document assumes those rules and applies them to one recurring decision: picking the right primitive.
+It is not an exhaustive API reference — see [API Reference](api-reference.md) for every prop, default, and value. `docs/core-concepts.md` already covers the rules behind the API (ownership, tokens, precedence). This document assumes those rules and applies them to one recurring decision: picking the right primitive.
 
 ---
 
@@ -388,14 +388,58 @@ For the outermost page scroll (the whole document scrolling normally), you don't
 
 The common shape is a fixed header above a scrolling body, inside a full-height Stack:
 
-```tsx
-<Stack height="full">
-  <Header />
-  <ScrollArea grow>
-    <ProjectGrid />
-  </ScrollArea>
-</Stack>
+```text
+Stack (height="full")
+├── header                fixed — does not scroll
+└── ScrollArea (grow)     fills the remaining height
+      └── content           scrolls inside this region only
 ```
+
+`height="full"` renders `height: 100%`, and `100%` only means something if an ancestor has a real height to be a percentage _of_. In a typical app, nothing does that by default — the browser doesn't give `html`/`body`/`#root` a height on its own. safe-css deliberately ships no global reset (see [Core rules](../README.md#15-core-rules)), so this is one line of ordinary CSS your application adds once, not something a token or prop can express:
+
+```css
+html,
+body,
+#root {
+  height: 100%;
+}
+```
+
+With that in place, the following is a complete example — copy it into `src/App.tsx` in a normal safe-css app (after `@safe-css/core/styles.css` and the above CSS are in place) and it will scroll:
+
+```tsx
+import { Box, ScrollArea, Stack, Sticky } from "@safe-css/core";
+
+const items = Array.from({ length: 30 }, (_, i) => `Item ${i + 1}`);
+
+const App = () => {
+  return (
+    <Stack height="full">
+      <ScrollArea grow>
+        <Sticky edge="top">
+          <Box as="header" padding="card" background="surface" border="subtle">
+            Scrolling list
+          </Box>
+        </Sticky>
+
+        <Box padding="page">
+          <Stack gap="element">
+            {items.map((item) => (
+              <Box key={item} padding="card" border="subtle">
+                {item}
+              </Box>
+            ))}
+          </Stack>
+        </Box>
+      </ScrollArea>
+    </Stack>
+  );
+};
+
+export default App;
+```
+
+What you should see: a header reading "Scrolling list" and 30 items below it. Scrolling moves the items, but the header stays pinned to the top of the scrolling region rather than scrolling away — because the `Sticky` above is nested _inside_ the `ScrollArea`, not outside it. (`Sticky` needs a scrolling ancestor to visibly do anything; see [Sticky](#7-sticky) below.)
 
 ### Important behavior
 
@@ -441,15 +485,50 @@ If the element doesn't need to stay attached while something scrolls — it just
 
 ### Typical usage
 
-```tsx
-<Sticky edge="top">
-  <Box as="header" padding="card" background="surface" border="subtle">
-    <Row align="center" justify="between">
-      <strong>Projects</strong>
-    </Row>
-  </Box>
-</Sticky>
+```text
+ScrollArea (scrolls)
+├── Sticky (edge="top")   stays pinned to the top of ScrollArea
+│     └── header
+└── page content            scrolls underneath the sticky header
 ```
+
+`Sticky` only produces a visible effect when it's inside something that actually scrolls — with no scrolling ancestor, there's nothing for it to stick relative to. The following is a complete, copy-paste example. It needs the same one-time bounded-height CSS as the [ScrollArea](#6-scrollarea) example above (`html`, `body`, `#root` set to `height: 100%` in your own global stylesheet — not part of safe-css):
+
+```tsx
+import { Box, Row, ScrollArea, Stack, Sticky } from "@safe-css/core";
+
+const projects = Array.from({ length: 20 }, (_, i) => `Project ${i + 1}`);
+
+const App = () => {
+  return (
+    <Stack height="full">
+      <ScrollArea grow>
+        <Sticky edge="top">
+          <Box as="header" padding="card" background="surface" border="subtle">
+            <Row align="center" justify="between">
+              <strong>Projects</strong>
+            </Row>
+          </Box>
+        </Sticky>
+
+        <Box padding="page">
+          <Stack gap="element">
+            {projects.map((project) => (
+              <Box key={project} padding="card" border="subtle">
+                {project}
+              </Box>
+            ))}
+          </Stack>
+        </Box>
+      </ScrollArea>
+    </Stack>
+  );
+};
+
+export default App;
+```
+
+What you should see: a header reading "Projects" that stays fixed at the top while the 20 project rows beneath it scroll past underneath it.
 
 ### Important behavior
 
@@ -485,6 +564,22 @@ Beyond being shorter, the `Sticky` version ties the offset and stacking order to
 
 Positioning one element relative to another — a badge on an avatar, an indicator on an icon — without either side writing `position: relative`/`position: absolute` by hand.
 
+`Overlay` and `Overlay.Item` own **where** something sits, and nothing else. They have no visual props of their own — border, background, radius, padding, and color still belong to whatever's inside them, typically `Box`:
+
+```tsx
+<Overlay>
+  <Box padding="element" radius="card" background="surface" border="subtle">
+    outer
+  </Box>
+
+  <Overlay.Item anchor="top-end" placement="edge">
+    <Box border="subtle">inner</Box>
+  </Overlay.Item>
+</Overlay>
+```
+
+Positioning and appearance stay separate: `Overlay`/`Overlay.Item` decide where each element sits relative to the other; `Box` decides what each one looks like.
+
 ### When to use it
 
 A small indicator that should sit at a corner or edge of another element: a status dot, an unread-count badge, a notification marker.
@@ -519,7 +614,25 @@ An icon with a notification badge:
 
 ### Important behavior
 
-`Overlay` establishes the positioning context; `Overlay.Item` is positioned against it by `anchor`, one of nine logical grid positions (`top-start` through `bottom-end`, plus `center`) — never by raw `top`/`left`/`transform` values you compute yourself. `placement` controls how far "on top of" the corner the item sits: `"inside"` (the default) keeps it flush inside the corner or edge; `"edge"` centers it directly on the corner/edge itself — the classic notification-dot look, and what both examples above use.
+`Overlay` establishes the positioning context; `Overlay.Item` is positioned against it by `anchor`, one of nine logical grid positions — never by raw `top`/`left`/`transform` values you compute yourself:
+
+```text
+top-start      top-center      top-end
+
+center-start      center       center-end
+
+bottom-start   bottom-center   bottom-end
+```
+
+`placement` controls how far "on top of" the corner the item sits:
+
+```text
+placement="inside"   the item sits flush inside the anchor corner/edge
+placement="edge"     the item straddles the anchor corner/edge itself
+                      (the classic notification-dot look)
+```
+
+Both examples above use `placement="edge"`.
 
 Anchors are expressed in logical terms (inline-start/end, block-start/end), and the corner-placement transform's sign flips automatically under `dir="rtl"`. An `anchor="top-end"` item stays in the correct visual corner whether the page is left-to-right or right-to-left, without any extra work.
 

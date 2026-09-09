@@ -47,7 +47,7 @@ Import the safe-css structural stylesheet once from your application entry point
 import "@safe-css/core/styles.css";
 
 import { createRoot } from "react-dom/client";
-import { App } from "./App";
+import App from "./App";
 
 createRoot(document.getElementById("root")!).render(<App />);
 ```
@@ -125,7 +125,7 @@ import "@safe-css/core/styles.css";
 import { createRoot } from "react-dom/client";
 import { ThemeProvider } from "@safe-css/core";
 
-import { App } from "./App";
+import App from "./App";
 import { theme } from "./theme";
 
 createRoot(document.getElementById("root")!).render(
@@ -152,7 +152,7 @@ src/App.tsx
 ```tsx
 import { Box, Row, Stack } from "@safe-css/core";
 
-export function App() {
+const App = () => {
   return (
     <Box padding="page" background="surfaceRaised">
       <Stack gap="section">
@@ -178,8 +178,12 @@ export function App() {
       </Stack>
     </Box>
   );
-}
+};
+
+export default App;
 ```
+
+(This file structure — a default-exported arrow function component — is the common Vite starter convention used throughout this guide. It's a tutorial choice, not a safe-css requirement; safe-css works the same with named exports, `function` components, or any other structure you prefer.)
 
 At this point, you already have the core safe-css mental model.
 
@@ -296,7 +300,7 @@ import { Box, Row, Stack } from "@safe-css/core";
 
 import { Card } from "./Card";
 
-export function App() {
+const App = () => {
   return (
     <Box padding="page" background="surfaceRaised">
       <Stack gap="section">
@@ -334,7 +338,9 @@ export function App() {
       </Stack>
     </Box>
   );
-}
+};
+
+export default App;
 ```
 
 The repeated style is now a product concept:
@@ -411,7 +417,7 @@ import { Suspense, lazy } from "react";
 import { createRoot } from "react-dom/client";
 import { ThemeProvider } from "@safe-css/core";
 
-import { App } from "./App";
+import App from "./App";
 import { theme } from "./theme";
 
 const Inspector = import.meta.env.DEV
@@ -666,9 +672,11 @@ That distinction becomes increasingly useful as token relationships grow.
 
 # 16. Theme scopes matter
 
-safe-css themes follow CSS custom-property inheritance.
+Sometimes one part of a page needs different design values than the rest of it — a branded subtree embedded in a neutral page, a dark section inside a light one, or a live theme-preview panel showing what a different radius or color would look like.
 
-That means the same token name can exist in different nested theme scopes.
+A nested `ThemeProvider` gives that part of the tree its own theme scope, without changing anything outside it.
+
+Mechanically, this works because safe-css themes follow CSS custom-property inheritance: the same token name can exist in different nested theme scopes at once, each resolving independently.
 
 For example:
 
@@ -931,6 +939,8 @@ Continue with:
 
 - [Core Concepts](core-concepts.md) — the mental model behind safe-css
 - [Layout](layout.md) — Box, Stack, Row, Grid, ScrollArea, Sticky and Overlay
+- [API Reference](api-reference.md) — every prop, default, and value, exhaustively
+- [Tokens](tokens.md) — every built-in design token and its value
 - **Theming** — tokens, theme scopes and nested ThemeProviders
 - **Recipes** — reusable semantic components and variants
 - **Inspector** — understanding rendered styling
