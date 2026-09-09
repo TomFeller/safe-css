@@ -14,6 +14,11 @@
  * propagates without regenerating any CSS. This file only ever encodes the
  * fixed, finite vocabulary of *structural* choices each primitive exposes
  * (flex direction, alignment keywords, overflow behavior, position scheme).
+ * The interactive-state bridge below (v0.4) is the one place this file
+ * touches token-shaped custom properties at all, and even there it never
+ * hardcodes a token *value* - it only ever copies one custom property into
+ * another while a native pseudo-class matches; every actual value still
+ * only ever comes from inline style.
  *
  * `margin: 0` here is a *scoped* normalization, not a global reset: it only
  * ever applies to elements safe-css itself rendered (every primitive carries
@@ -36,6 +41,66 @@
 .fw-OverlayItem {
   box-sizing: border-box;
   margin: 0;
+}
+
+/*
+ * Interactive-state bridge (v0.4): a small, finite, framework-authored
+ * matrix of (state x property) custom-property "slots" - not runtime CSS
+ * generation, not a per-recipe rule. `Box` conditionally emits a `-value`
+ * custom property (e.g. `--fw-state-hover-background-value`) inline,
+ * unconditionally whenever a recipe declares that state for that property,
+ * regardless of whether the state is currently active - this is what keeps
+ * a state-only token dependency visible before any interaction happens (see
+ * `primitives/internal/stateBridge.ts`). The rules below are the only place
+ * a browser interaction actually changes anything, by copying a `-value`
+ * into its bridge slot only while the matching pseudo-class is true.
+ *
+ * The reset is not a global reset (see this file's own rule above): it only
+ * ever touches this finite, framework-owned `--fw-state-*` namespace, and
+ * only on elements that already carry `.fw-Box`. Without it, a slot
+ * activated by a `:hover`'d *ancestor* Box would inherit into a
+ * non-hovered descendant Box, since custom properties inherit by default -
+ * this reset re-asserts "unset" on every Box so only that element's own,
+ * more specific pseudo-class rule below (which always wins on specificity)
+ * can populate its own slot. Verified empirically against real nested
+ * Boxes before this was adopted.
+ *
+ * `:not(:disabled)` is present here from day one, independent of whether a
+ * recipe configures a `disabled` state (not supported until a later phase):
+ * it is a correctness rule for the states that exist today, guaranteeing
+ * hover/focus-visible/active styling never visually applies to a genuinely
+ * disabled native element, structurally rather than by chance.
+ */
+.fw-Box {
+  --fw-state-hover-background: initial;
+  --fw-state-hover-color: initial;
+  --fw-state-hover-border: initial;
+
+  --fw-state-focus-visible-background: initial;
+  --fw-state-focus-visible-color: initial;
+  --fw-state-focus-visible-border: initial;
+
+  --fw-state-active-background: initial;
+  --fw-state-active-color: initial;
+  --fw-state-active-border: initial;
+}
+
+.fw-Box:hover:not(:disabled) {
+  --fw-state-hover-background: var(--fw-state-hover-background-value, initial);
+  --fw-state-hover-color: var(--fw-state-hover-color-value, initial);
+  --fw-state-hover-border: var(--fw-state-hover-border-value, initial);
+}
+
+.fw-Box:focus-visible:not(:disabled) {
+  --fw-state-focus-visible-background: var(--fw-state-focus-visible-background-value, initial);
+  --fw-state-focus-visible-color: var(--fw-state-focus-visible-color-value, initial);
+  --fw-state-focus-visible-border: var(--fw-state-focus-visible-border-value, initial);
+}
+
+.fw-Box:active:not(:disabled) {
+  --fw-state-active-background: var(--fw-state-active-background-value, initial);
+  --fw-state-active-color: var(--fw-state-active-color-value, initial);
+  --fw-state-active-border: var(--fw-state-active-border-value, initial);
 }
 
 /* Stack: vertical flex */

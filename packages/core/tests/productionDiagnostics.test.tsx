@@ -1,3 +1,4 @@
+import { createRef } from "react";
 import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
 import { render } from "@testing-library/react";
 import { Box, ThemeProvider, createTheme, defineRecipe } from "../src";
@@ -104,5 +105,122 @@ describe("production-mode diagnostics: silent by default", () => {
     const el = getByTestId("el");
     expect(el.style.padding).toBe("var(--fw-space-card)");
     expect(el.style.backgroundColor).toBe("var(--fw-color-surface)");
+  });
+
+  it("an instance override suppressing a recipe's interactive state produces no warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const Button = defineRecipe(Box, {
+      name: "Button",
+      base: { background: "action" },
+      states: { hover: { background: "surfaceRaised" } },
+    });
+    render(
+      <ThemeProvider theme={createTheme()}>
+        <Button background="danger" />
+      </ThemeProvider>,
+    );
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("unsafeCss suppressing a recipe's interactive state produces no warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const Button = defineRecipe(Box, {
+      name: "Button",
+      base: { background: "action" },
+      states: { hover: { background: "surfaceRaised" } },
+    });
+    render(
+      <ThemeProvider theme={createTheme()}>
+        <Button unsafeCss={{ backgroundColor: "red" }} />
+      </ThemeProvider>,
+    );
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("an instance with an explicit ref still gets the full bridge and no warning, in production", () => {
+    // A ref is not a styling decision - passing one must never change
+    // whether interaction-state styling applies, in development or
+    // production.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const Button = defineRecipe(Box, {
+      name: "Button",
+      base: { background: "action" },
+      states: { hover: { background: "surfaceRaised" } },
+    });
+    const ref = createRef<HTMLDivElement>();
+    const { getByTestId } = render(
+      <ThemeProvider theme={createTheme()}>
+        <Button ref={ref} data-testid="el" />
+      </ThemeProvider>,
+    );
+    expect(warn).not.toHaveBeenCalled();
+    expect(ref.current).toBe(getByTestId("el"));
+    expect(getByTestId("el").style.backgroundColor).toBe(
+      "var(--fw-state-hover-background, var(--fw-color-action))",
+    );
+    expect(getByTestId("el").hasAttribute("data-fw-state-tokens")).toBe(false);
+    warn.mockRestore();
+  });
+
+  it("an unknown state token produces no warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const Button = defineRecipe(Box, {
+      name: "Button",
+      states: { hover: { background: "typo" as never } },
+    });
+    render(
+      <ThemeProvider theme={createTheme()}>
+        <Button />
+      </ThemeProvider>,
+    );
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("does not emit data-fw-state-tokens (or any other new dev metadata)", () => {
+    const Button = defineRecipe(Box, {
+      name: "Button",
+      base: { background: "action" },
+      states: {
+        hover: { background: "surfaceRaised" },
+        focusVisible: { border: "strong" },
+        active: { background: "danger" },
+      },
+    });
+    const { getByTestId } = render(
+      <ThemeProvider theme={createTheme()}>
+        <Button data-testid="el">Go</Button>
+      </ThemeProvider>,
+    );
+    const el = getByTestId("el");
+    expect(el.hasAttribute("data-fw-state-tokens")).toBe(false);
+    expect(el.hasAttribute("data-fw-tokens")).toBe(false);
+    expect(el.hasAttribute("data-fw-primitive")).toBe(false);
+    expect(el.hasAttribute("data-fw-recipe")).toBe(false);
+  });
+
+  it("still renders the correct, fully functional bridge inline styles in production", () => {
+    // Diagnostics/metadata are dev-only; the actual interactive-state CSS
+    // output is real, functional behavior and must be identical in
+    // production.
+    const Button = defineRecipe(Box, {
+      name: "Button",
+      base: { background: "action" },
+      states: { hover: { background: "surfaceRaised" } },
+    });
+    const { getByTestId } = render(
+      <ThemeProvider theme={createTheme()}>
+        <Button data-testid="el">Go</Button>
+      </ThemeProvider>,
+    );
+    const el = getByTestId("el");
+    expect(el.style.backgroundColor).toBe(
+      "var(--fw-state-hover-background, var(--fw-color-action))",
+    );
+    expect(el.style.getPropertyValue("--fw-state-hover-background-value")).toBe(
+      "var(--fw-color-surfaceRaised)",
+    );
   });
 });

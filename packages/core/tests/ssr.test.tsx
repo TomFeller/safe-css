@@ -4,6 +4,7 @@
 // `document` are genuinely undefined. If any component accidentally reached
 // for a browser global during render, this file would throw a
 // ReferenceError instead of silently passing under jsdom.
+import { createRef } from "react";
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
@@ -79,5 +80,97 @@ describe("SSR", () => {
   it("emits var() references (not literal values) for token-driven component styles", () => {
     const html = renderToStaticMarkup(<Dashboard />);
     expect(html).toContain("var(--fw-radius-card)");
+  });
+});
+
+// A recipe with interactive states, defined once at module scope like Card
+// above - this is the whole point being verified: nothing about states
+// requires `window`/`document`, since the entire bridge is static inline
+// style plus a stylesheet the browser already has - no client JS runs
+// before a `:hover`/`:focus-visible`/`:active` style is correct.
+const Button = defineRecipe(Box, {
+  name: "Button",
+  base: { as: "button", padding: "control", background: "action", color: "surface" },
+  variants: { tone: { secondary: { background: "surface", color: "text" } } },
+  states: {
+    hover: { background: "surfaceRaised" },
+    focusVisible: { border: "strong" },
+    active: { background: "danger" },
+  },
+});
+
+describe("SSR: interactive states", () => {
+  it("renders a recipe with states to static markup without throwing, and without needing window/document", () => {
+    expect(() =>
+      renderToStaticMarkup(
+        <ThemeProvider theme={createTheme()}>
+          <Button>Go</Button>
+        </ThemeProvider>,
+      ),
+    ).not.toThrow();
+  });
+
+  it("produces deterministic output across repeated renders", () => {
+    const render = () =>
+      renderToStaticMarkup(
+        <ThemeProvider theme={createTheme()}>
+          <Button tone="secondary">Go</Button>
+        </ThemeProvider>,
+      );
+    expect(render()).toBe(render());
+  });
+
+  it("emits the bridge's nested var() fallback expression and every declared state's -value custom property in the static markup", () => {
+    const html = renderToStaticMarkup(
+      <ThemeProvider theme={createTheme()}>
+        <Button>Go</Button>
+      </ThemeProvider>,
+    );
+    // `Button` only declares `focusVisible` for `border`, not `background`
+    // (see the recipe definition above) - per the "only include state
+    // layers actually declared for that property" requirement, the
+    // background fallback chain correctly includes just hover and active,
+    // skipping a focusVisible layer that was never declared for background.
+    expect(html).toContain(
+      "var(--fw-state-active-background, var(--fw-state-hover-background, var(--fw-color-action)))",
+    );
+    // `border` has no base/variant/instance resting value at all (only
+    // `focusVisible.border` is declared) - the innermost fallback is
+    // `unset`, not `initial`, so a state-only property doesn't force an
+    // inherited property like `color` to reset to its CSS-spec default at
+    // rest (see stateBridge.ts's `applyStateBridge`).
+    expect(html).toContain("var(--fw-state-focus-visible-border, unset)");
+    expect(html).toContain("--fw-state-hover-background-value:var(--fw-color-surfaceRaised)");
+    expect(html).toContain("--fw-state-focus-visible-border-value:var(--fw-border-strong)");
+    expect(html).toContain("--fw-state-active-background-value:var(--fw-color-danger)");
+  });
+
+  it("an instance override renders a plain, unbridged value in static markup, deterministically", () => {
+    const html = renderToStaticMarkup(
+      <ThemeProvider theme={createTheme()}>
+        <Button background="textMuted">Go</Button>
+      </ThemeProvider>,
+    );
+    expect(html).toContain("background-color:var(--fw-color-textMuted)");
+    expect(html).not.toContain("--fw-state-hover-background-value");
+  });
+
+  it("an explicit ref does not change the bridge output, and output stays deterministic", () => {
+    // A ref is not a styling decision - passing one must not change SSR
+    // output at all, and none of this requires a real DOM node to exist.
+    const ref = createRef<HTMLButtonElement>();
+    const withRef = () =>
+      renderToStaticMarkup(
+        <ThemeProvider theme={createTheme()}>
+          <Button ref={ref}>Go</Button>
+        </ThemeProvider>,
+      );
+    const withoutRef = renderToStaticMarkup(
+      <ThemeProvider theme={createTheme()}>
+        <Button>Go</Button>
+      </ThemeProvider>,
+    );
+    expect(withRef()).toBe(withRef());
+    expect(withRef()).toBe(withoutRef);
   });
 });

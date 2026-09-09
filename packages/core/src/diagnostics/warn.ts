@@ -139,10 +139,11 @@ export function warnRecipeVariantCollision(
 /**
  * The `data-fw-*` namespace is reserved for safe-css's own traceability
  * metadata (`data-fw-primitive`, `data-fw-recipe`, `data-fw-variant`,
- * `data-fw-tokens`, `data-fw-unsafe-css`). A consumer-supplied attribute in
- * this namespace never wins - the framework's own value is always applied
- * last at each call site - so this warns rather than silently accepting
- * (and dropping) whatever the consumer passed.
+ * `data-fw-tokens`, `data-fw-state-tokens`, `data-fw-unsafe-css`). A
+ * consumer-supplied attribute in this namespace never wins - the
+ * framework's own value is always applied last at each call site - so this
+ * warns rather than silently accepting (and dropping) whatever the
+ * consumer passed.
  */
 export function warnReservedAttribute(
   mode: DiagnosticsMode,
@@ -158,6 +159,54 @@ export function warnReservedAttribute(
       `The \`data-fw-*\` namespace is reserved for safe-css's own traceability metadata - ` +
       `the framework's own value will be used instead of what you passed. ` +
       `Use a different attribute name for custom data.`,
+  );
+}
+
+/**
+ * Interactive-state styling (see `primitives/internal/stateBridge.ts`) is
+ * suppressed for a property whenever an instance prop for that exact
+ * property is also given - by design, matching the approved precedence
+ * (`recipe base < recipe variants < interactive state < instance props <
+ * unsafeCss`). The instance value is correct; this is a one-time,
+ * informational heads-up that the recipe's hover/focusVisible/active
+ * treatment for that property will not be visible on this particular
+ * instance, not an error.
+ */
+export function warnRecipeStateSuppressedByInstance(
+  mode: DiagnosticsMode,
+  recipeName: string,
+  prop: string,
+  states: readonly string[],
+): void {
+  warnIfEnabled(
+    mode,
+    `recipe-state-suppressed-instance:${recipeName}:${prop}`,
+    `<${recipeName}> received an instance \`${prop}\` prop, which suppresses this recipe's ` +
+      `interaction-state styling for \`${prop}\` (${states.join(", ")}) on this instance. ` +
+      `The instance value always wins - this is expected, not an error.`,
+  );
+}
+
+/**
+ * The same suppression as {@link warnRecipeStateSuppressedByInstance}, but
+ * via `unsafeCss` setting the same rendered CSS property a state targets
+ * (e.g. state property `background` vs. `unsafeCss.backgroundColor`) rather
+ * than an instance prop. `unsafeCss` always wins by design; this is the
+ * equivalent heads-up for that case.
+ */
+export function warnRecipeStateSuppressedByUnsafeCss(
+  mode: DiagnosticsMode,
+  recipeName: string,
+  prop: string,
+  unsafeCssKey: string,
+  states: readonly string[],
+): void {
+  warnIfEnabled(
+    mode,
+    `recipe-state-suppressed-unsafecss:${recipeName}:${prop}`,
+    `<${recipeName}> received \`unsafeCss.${unsafeCssKey}\`, which suppresses this recipe's ` +
+      `interaction-state styling for \`${prop}\` (${states.join(", ")}) on this instance. ` +
+      `unsafeCss always wins - this is expected, not an error.`,
   );
 }
 

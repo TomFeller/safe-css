@@ -6,10 +6,20 @@ import {
   type ForwardRefExoticComponent,
 } from "react";
 import { isDevelopmentBuild } from "../diagnostics/env";
-import { warnRecipeVariantCollision, warnReservedAttribute } from "../diagnostics/warn";
+import {
+  warnRecipeStateSuppressedByInstance,
+  warnRecipeVariantCollision,
+  warnReservedAttribute,
+} from "../diagnostics/warn";
 import { useThemeMeta } from "../theme/ThemeContext";
 import { RECIPE_RESERVED_ATTRIBUTES } from "../primitives/internal/debugAttributes";
 import type { PolymorphicProps, PolymorphicRef } from "../primitives/internal/polymorphic";
+import {
+  RECIPE_STATE_BRIDGE,
+  RECIPE_STATE_PRIORITY,
+  type RecipeStateBridge,
+  type RecipeStateName,
+} from "../primitives/internal/stateBridge";
 
 /**
  * A component shape a recipe can be built on: any of the framework's
@@ -48,6 +58,31 @@ export type RecipeVariantMap<P> = Record<string, Record<string, Partial<P>>>;
  */
 type VariantHint<P, V> = { [K in keyof V]?: { [J in keyof V[K]]?: Partial<P> } };
 
+/**
+ * The fixed, closed set of visual props eligible for interactive-state
+ * styling in this phase - see `primitives/internal/stateBridge.ts` for why
+ * this list is small and framework-controlled rather than open.
+ */
+type StateEligiblePropName = "background" | "color" | "border";
+
+/**
+ * For a primitive's own props `Own`, the subset eligible for `states` -
+ * typed each key explicitly rather than via `Pick<Own, Extract<...>>`:
+ * `Pick` over an empty key set collapses to `{}`, and TypeScript's `{}`
+ * accepts *any* object (it isn't "no properties allowed", just "no
+ * properties required"), so a `Stack`-based recipe's `states` would have
+ * silently accepted an arbitrary object with no compile error at all. Every
+ * eligible key is mapped to `never` instead for a primitive that doesn't
+ * support it (e.g. every key here for `StackOwnProps`, which has no
+ * `background`/`color`/`border`) - no value except `undefined` is
+ * assignable to `never`, so any attempt to set one is a real compile
+ * error, not a silently-ignored no-op. See the recipe engine's tests for
+ * the regression this guards against.
+ */
+type RecipeStateProps<Own> = Partial<{
+  [K in StateEligiblePropName]: K extends keyof Own ? Own[K] : never;
+}>;
+
 export interface RecipeConfig<
   Own,
   E extends ElementType,
@@ -72,6 +107,20 @@ export interface RecipeConfig<
   base?: Partial<Omit<PolymorphicProps<E, Own>, "as">> & { as?: E };
   variants?: V & VariantHint<PolymorphicProps<E, Own>, V>;
   defaultVariants?: { [K in keyof V]?: keyof V[K] & string };
+  /**
+   * Native browser interaction states - `hover`, `focusVisible`, `active` in
+   * this phase - for the fixed, small set of visual props listed in
+   * {@link RecipeStateProps}. Resolves through the exact same token
+   * validation every other prop uses, and is suppressed for a given
+   * property on any instance that also sets that property directly (an
+   * instance override always wins - see
+   * `primitives/internal/stateBridge.ts`). Only meaningful for a primitive
+   * that actually exposes the relevant props; for one that doesn't (e.g.
+   * `Stack`, `Row`), `RecipeStateProps<Own>` resolves to an empty object
+   * type, so any key here is a compile error rather than a silently-ignored
+   * no-op.
+   */
+  states?: Partial<Record<RecipeStateName, Partial<RecipeStateProps<Own>>>>;
 }
 
 export type RecipeVariantProps<V> = { [K in keyof V]?: keyof V[K] & string };
@@ -98,9 +147,17 @@ type RecipeRefProp<E extends ElementType> = { ref?: PolymorphicRef<E> };
  * like `"& div span"`, and there is no compound-variant engine in v0.1 (see
  * docs/architecture.md#recipes for why).
  *
- * Precedence is a single, deterministic chain, applied as a plain object
- * merge with no CSS specificity involved:
- * primitive defaults < recipe `base` < recipe variant < instance props.
+ * Precedence is a single, deterministic chain:
+ * primitive defaults < recipe `base` < recipe variants < interactive state
+ * < instance props < `unsafeCss`. `base`/variants/instance props are a
+ * plain object merge with no CSS specificity involved, exactly as before;
+ * `states` is layered in separately by the underlying primitive (see
+ * `primitives/internal/stateBridge.ts`) since a native `:hover`/
+ * `:focus-visible`/`:active` rule cannot be expressed as a JS object merge -
+ * but an instance prop or `unsafeCss` for the same property still always
+ * wins over it, by construction: this function excludes any property an
+ * instance override touches from the state bridge entirely, rather than
+ * relying on any CSS-side precedence to sort it out.
  *
  * When two *different* variant groups both set the same underlying prop
  * (e.g. a `size` variant and a `density` variant both set `padding`) and are
@@ -190,6 +247,46 @@ export function defineRecipe<
 
       merged["data-fw-recipe"] = config.name;
       if (activeVariants.length > 0) merged["data-fw-variant"] = activeVariants.join(" ");
+    }
+
+    if (config.states) {
+      const bridge: Record<string, Record<string, unknown>> = {};
+      // Property -> which declared states got suppressed by an instance
+      // override, for the diagnostic below.
+      const suppressed: Record<string, RecipeStateName[]> = {};
+
+      for (const stateName of RECIPE_STATE_PRIORITY) {
+        const stateProps = (
+          config.states as Partial<Record<RecipeStateName, Record<string, unknown>>>
+        )[stateName];
+        if (!stateProps) continue;
+
+        for (const [prop, value] of Object.entries(stateProps)) {
+          if (prop in instanceProps) {
+            (suppressed[prop] ??= []).push(stateName);
+            continue;
+          }
+          (bridge[prop] ??= {})[stateName] = value;
+        }
+      }
+
+      if (Object.keys(bridge).length > 0) {
+        // An ordinary string-keyed prop, so it survives being passed through
+        // a `forwardRef` component regardless of whether `ref` is also set -
+        // see the comment on `RECIPE_STATE_BRIDGE` in stateBridge.ts for why
+        // that matters. `Box` strips this key back out before it ever
+        // reaches a DOM element (see Box.tsx).
+        merged[RECIPE_STATE_BRIDGE] = {
+          recipeName: config.name,
+          ...bridge,
+        } as unknown as RecipeStateBridge;
+      }
+
+      if (isDevelopmentBuild()) {
+        for (const [prop, states] of Object.entries(suppressed)) {
+          warnRecipeStateSuppressedByInstance(diagnostics, config.name, prop, states);
+        }
+      }
     }
 
     return createElement(Primitive, merged);

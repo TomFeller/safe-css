@@ -5,6 +5,8 @@ import type { DiagnosticsMode } from "../../theme/types";
 export interface DebugMeta {
   primitive: string;
   tokens?: string[];
+  /** Tokens used only by a recipe's interactive-state styling (see `primitives/internal/stateBridge.ts`), formatted as `state|property|token` - reported separately from `tokens` so `data-fw-tokens` can stay a plain "what does this element currently depend on" list while this stays traceable to exactly which state uses each one. */
+  stateTokens?: string[];
   /** Number of properties set via `unsafeCss` on this element, if any. */
   unsafeCssCount?: number;
 }
@@ -17,6 +19,7 @@ export interface DebugMeta {
 export const PRIMITIVE_RESERVED_ATTRIBUTES = [
   "data-fw-primitive",
   "data-fw-tokens",
+  "data-fw-state-tokens",
   "data-fw-unsafe-css",
 ] as const;
 
@@ -82,7 +85,14 @@ export function debugAttributes(
     "data-fw-primitive": meta.primitive,
   };
   if (meta.tokens && meta.tokens.length > 0) {
-    attrs["data-fw-tokens"] = meta.tokens.join(" ");
+    // Deduplicated: a resting value and one of its own interactive states
+    // can legitimately reference the same token (e.g. `base.background` and
+    // `states.hover.background` both set to the same token name), which
+    // would otherwise double-list it here.
+    attrs["data-fw-tokens"] = [...new Set(meta.tokens)].join(" ");
+  }
+  if (meta.stateTokens && meta.stateTokens.length > 0) {
+    attrs["data-fw-state-tokens"] = meta.stateTokens.join(" ");
   }
   if (meta.unsafeCssCount) {
     attrs["data-fw-unsafe-css"] = String(meta.unsafeCssCount);
