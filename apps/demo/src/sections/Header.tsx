@@ -24,8 +24,18 @@ export function Header({
           </Row>
 
           <Row align="center" gap="element">
+            {/*
+              `id` and `className` here are harmless, ordinary consumer hooks
+              - not styled by safe-css, not read by anything in this demo.
+              They exist so the Inspector's "External hooks" panel has
+              something real to show: select this button and it should
+              report `id="rtl-toggle"` and `className="qa-rtl-toggle"` as
+              external, separate from `fw-Box` (its own framework class).
+            */}
             <Box
               as="button"
+              id="rtl-toggle"
+              className="qa-rtl-toggle"
               onClick={onToggleRtl}
               paddingInline="element"
               paddingBlock="control"
@@ -37,9 +47,19 @@ export function Header({
               {rtl ? "LTR" : "RTL"}
             </Box>
 
+            {/*
+              inlineOffset/blockOffset (v0.4) pull the status dot in by
+              different amounts on each axis - independently of one
+              another, and correctly logical under the RTL toggle above.
+            */}
             <Overlay>
               <Avatar initials="TF" />
-              <Overlay.Item anchor="top-end" placement="edge">
+              <Overlay.Item
+                anchor="top-end"
+                placement="edge"
+                inlineOffset="control"
+                blockOffset="element"
+              >
                 <StatusIndicator tone="action" />
               </Overlay.Item>
             </Overlay>

@@ -201,6 +201,23 @@ describe("production-mode diagnostics: silent by default", () => {
     expect(el.hasAttribute("data-fw-recipe")).toBe(false);
   });
 
+  it("does not emit data-fw-state-suppressed in production, even when unsafeCss suppresses a declared state", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const Button = defineRecipe(Box, {
+      name: "Button",
+      base: { background: "action" },
+      states: { hover: { background: "surfaceRaised" } },
+    });
+    const { getByTestId } = render(
+      <ThemeProvider theme={createTheme()}>
+        <Button data-testid="el" unsafeCss={{ backgroundColor: "red" }} />
+      </ThemeProvider>,
+    );
+    expect(warn).not.toHaveBeenCalled();
+    expect(getByTestId("el").hasAttribute("data-fw-state-suppressed")).toBe(false);
+    warn.mockRestore();
+  });
+
   it("still renders the correct, fully functional bridge inline styles in production", () => {
     // Diagnostics/metadata are dev-only; the actual interactive-state CSS
     // output is real, functional behavior and must be identical in

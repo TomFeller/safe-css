@@ -748,6 +748,74 @@ to make that boundary explicit.
 
 ---
 
+# Define a Button's interaction, then inspect and analyze it
+
+Everything so far has been resting appearance. `defineRecipe` also has a `states` config for what the _browser_ does — `hover`, `focus-visible`, `active` — as a native CSS pseudo-class, not a state variable you'd have to wire up yourself.
+
+Create:
+
+```text
+src/Button.tsx
+```
+
+```tsx
+import { Box, defineRecipe } from "@safe-css/core";
+
+export const Button = defineRecipe(Box, {
+  name: "Button",
+
+  base: {
+    as: "button",
+    padding: "control",
+    radius: "control",
+    background: "action",
+    color: "surface",
+    border: "none",
+  },
+
+  states: {
+    hover: {
+      background: "surfaceRaised",
+    },
+
+    focusVisible: {
+      border: "strong",
+    },
+  },
+});
+```
+
+Drop a `<Button>Save</Button>` into the page and try it: hover it with a mouse, then tab to it with a keyboard. Both change its appearance — with no `onMouseEnter`, no `useState`, and no client JS required for the interaction itself to be correct.
+
+Open the Inspector and select the Button. Alongside the Tokens section you already know, there's now an **Interaction states** section:
+
+```text
+Interaction states
+
+hover
+background → colors.surfaceRaised
+
+focus-visible
+border → border.strong
+```
+
+This describes the _rules_ the Button declares, not a live event feed — the Inspector isn't watching your mouse. It shows exactly what's true for this element regardless of whether it happens to be hovered right now.
+
+Pick `colors.surfaceRaised` from that section and run **Analyze impact**, same as with any other token. The result explains the Button as affected even though nothing is currently hovering it:
+
+```text
+colors.surfaceRaised
+Direct
+via hover · background
+Button × 1
+```
+
+That `via hover · background` line is the point: the rendered Button genuinely depends on this token — changing it changes what happens the next time someone hovers the button — so Impact Analysis counts it, rather than waiting for the pointer to arrive. An element affected only through a state like this (never through its resting appearance) is also marked **Interaction-only** in the summary — one more fact about an already-affected element, not a separate kind of impact.
+
+You've now done the same loop as before — define intent, inspect it, analyze its impact — with one addition: defining _interaction_, not just appearance.
+
+---
+
 # 18. Use unsafeCss when you actually need CSS
 
 safe-css intentionally does not expose every CSS property.

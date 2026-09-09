@@ -636,6 +636,26 @@ Both examples above use `placement="edge"`.
 
 Anchors are expressed in logical terms (inline-start/end, block-start/end), and the corner-placement transform's sign flips automatically under `dir="rtl"`. An `anchor="top-end"` item stays in the correct visual corner whether the page is left-to-right or right-to-left, without any extra work.
 
+**Independent axis offsets.** `offset` is a shorthand that sets both non-centered axes at once. `inlineOffset`/`blockOffset` each independently override it for their own axis — the other axis still falls back to `offset`, then `"none"`:
+
+```tsx
+// Pull the badge in slightly more on the inline axis than the block axis.
+<Overlay.Item anchor="top-end" placement="edge" inlineOffset="element" blockOffset="control">
+  <StatusIndicator />
+</Overlay.Item>
+```
+
+These are deliberately named `inlineOffset`/`blockOffset` — logical, not `horizontalOffset`/`verticalOffset` — for the same writing-direction-independence reason `anchor` itself is logical.
+
+Some anchors center an axis at a fixed `50%` instead of offsetting from an edge — `top-center`/`bottom-center` center the inline axis, `center-start`/`center-end` center the block axis, `center` centers both. A centered axis never consumes an offset (including the `offset` shorthand); passing `inlineOffset`/`blockOffset` explicitly for an anchor that centers that exact axis has no effect and logs a one-time development warning rather than doing anything silently:
+
+```tsx
+// Inline axis stays centered at 50%; only the block offset applies.
+<Overlay.Item anchor="top-center" blockOffset="card">
+  <Toast />
+</Overlay.Item>
+```
+
 ### Relevant props
 
 `Overlay` itself has no layout props of its own — it only establishes the positioning context.
@@ -643,10 +663,12 @@ Anchors are expressed in logical terms (inline-start/end, block-start/end), and 
 `Overlay.Item`:
 
 ```text
-anchor      — one of the 9 positions (required)
-placement   — "inside" | "edge" (default "inside")
-offset      — space token (default "none")
-layer       — layer token (default "overlay")
+anchor         — one of the 9 positions (required)
+placement      — "inside" | "edge" (default "inside")
+offset         — space token (default "none") - shorthand for both axes
+inlineOffset   — space token - overrides offset on the inline axis only
+blockOffset    — space token - overrides offset on the block axis only
+layer          — layer token (default "overlay")
 ```
 
 ### Common mistakes
@@ -688,6 +710,26 @@ A few decisions come up often enough to call out directly.
 **Box + position vs Sticky** — `position: sticky` by hand means picking a raw offset and z-index. `Sticky` ties both to the theme.
 
 **Box + absolute positioning vs Overlay** — hand-rolled `position: relative`/`absolute`/`top`/`right` breaks under RTL and has to be recomputed per anchor. `Overlay` encodes the geometry once, correctly, for all nine anchors.
+
+---
+
+# The main-container pattern
+
+The most common question from developers new to safe-css: how do I get a normal, centered, responsive main content container — the thing almost every app shell has, with a max width and horizontal padding that scales down on small screens?
+
+There is no `Container` primitive for this. It's a composition of two primitives already documented above:
+
+```tsx
+<Stack width="full" align="center">
+  <Box width="full" maxWidth="content" paddingInline="page">
+    {children}
+  </Box>
+</Stack>
+```
+
+`size.content` (the `maxWidth` token) caps the container's width on large screens; `space.page` (the `paddingInline` token) is a responsive `clamp()` that gives the content readable breathing room on small screens without needing a separate breakpoint prop. `Stack align="center"` centers the (narrower, once `maxWidth` kicks in) `Box` within the full-width row it sits in.
+
+This is deliberately a composition, not a primitive, and that's not an oversight: safe-css adds a new primitive when there is real _behavior_ or a _correctness property_ to own — the way `Sticky` owns edge-offset/z-index correctness, or `Overlay` owns anchor geometry and RTL-safe transforms. A centered max-width container is two existing primitives with two token-driven props; there is no behavior left to own, no correctness pitfall a hand-written version would get wrong, and no CSS specificity or scoping issue only a dedicated component could solve. Adding `Container` here would shorten one line at the cost of a third way to express "centered, capped-width column" alongside `Box`+`Stack` — see [Core Concepts §9](core-concepts.md#9-behavior-belongs-to-specialized-primitives) for the general rule this follows.
 
 ---
 

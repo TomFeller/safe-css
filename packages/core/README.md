@@ -1,6 +1,6 @@
 # @safe-css/core
 
-**CSS you can safely change.** A semantic layout and theming framework for React — primitives for behavior (`Stack`, `Row`, `Grid`, `ScrollArea`, `Sticky`, `Overlay`), tokens instead of raw values, and a deterministic style precedence with no CSS specificity involved.
+**CSS you can safely change.** A semantic layout and theming framework for React — primitives for behavior (`Stack`, `Row`, `Grid`, `ScrollArea`, `Sticky`, `Overlay`), tokens instead of raw values, and a deterministic style precedence with no CSS specificity involved. Recipes (`defineRecipe`) can also declare native `hover`/`focus-visible`/`active` interaction styling — real CSS pseudo-classes, no JavaScript event tracking.
 
 ```bash
 npm install @safe-css/core react react-dom

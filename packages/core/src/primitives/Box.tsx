@@ -191,6 +191,14 @@ export const Box = forwardRef(function Box(props: BoxProps, ref: PolymorphicRef<
   if (shrink === true) classes.push("fw-shrink");
   if (shrink === false) classes.push("fw-shrink-none");
 
+  // `stateSuppressed` mirrors the diagnostic loop below one-for-one: both
+  // walk the same STATE_BRIDGE_UNSAFE_CSS_KEYS-detected collisions, one just
+  // warns in the console and the other records the same fact as dev-only DOM
+  // metadata (`data-fw-state-suppressed`) so Inspector/Impact Analysis can
+  // read it back without re-deriving it from raw inline styles. Emitting one
+  // entry per affected state (not one per property) means a consumer never
+  // has to infer which of a property's declared states were suppressed.
+  const stateSuppressed: string[] = [];
   if (isDevelopmentBuild() && stateBridge && unsafeCss) {
     for (const property of ["background", "color", "border"] as const) {
       const statesForProperty = stateBridge[property];
@@ -200,13 +208,17 @@ export const Box = forwardRef(function Box(props: BoxProps, ref: PolymorphicRef<
         (key) => key in (unsafeCss as Record<string, unknown>),
       );
       if (collidingKey) {
+        const affectedStates = Object.keys(statesForProperty) as RecipeStateName[];
         warnRecipeStateSuppressedByUnsafeCss(
           diagnostics,
           stateBridge.recipeName,
           property,
           collidingKey,
-          Object.keys(statesForProperty) as RecipeStateName[],
+          affectedStates,
         );
+        for (const state of affectedStates) {
+          stateSuppressed.push(`${state}|${property}|${collidingKey}`);
+        }
       }
     }
   }
@@ -225,7 +237,7 @@ export const Box = forwardRef(function Box(props: BoxProps, ref: PolymorphicRef<
       style={finalStyle}
       {...rest}
       {...debugAttributes(
-        { primitive: "Box", tokens, stateTokens, unsafeCssCount },
+        { primitive: "Box", classes, tokens, stateTokens, stateSuppressed, unsafeCssCount },
         rest,
         diagnostics,
       )}

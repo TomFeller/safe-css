@@ -561,12 +561,16 @@ recipe base
       ↓
 recipe variant
       ↓
+interactive state
+      ↓
 instance props
       ↓
 unsafeCss
 ```
 
 Later layers win.
+
+Interactive state (see "Variants vs. interactive states" below) sits between recipe variants and instance props for a reason: a recipe author's `hover`/`focus-visible`/`active` declaration is still just a recipe-level default, and an instance setting that same property is still the more specific, more local decision — the same "closer to the call site wins" rule that already governs every other layer, extended to cover the one layer that isn't a plain object merge (it becomes a native CSS rule instead, but the precedence is still resolved deterministically by Core before any CSS is involved, never by reasoning about selector specificity).
 
 For example:
 
@@ -632,6 +636,49 @@ Card with these three particular CSS differences
 ```
 
 This is the same intent-first principle applied at the recipe level.
+
+### Variants vs. interactive states
+
+Variants and `states` both live on `defineRecipe`, and both change a recipe's appearance — but they answer two different questions, and safe-css deliberately keeps them as two different mechanisms rather than blurring them into one.
+
+A variant answers:
+
+```text
+What state has the application decided this component is in?
+```
+
+`selected`, `expanded`, `loading`, "the current nav item" — these are decisions your own code makes, usually from application state (`useState`, a route match, a fetch status). They're expressed as a variant:
+
+```tsx
+variants: {
+  state: {
+    default: {},
+    selected: { background: "action", color: "surface" },
+  },
+}
+
+<NavItem state={isCurrentRoute ? "selected" : "default"} />
+```
+
+`states` answers a different question entirely:
+
+```text
+What native browser interaction is happening right now?
+```
+
+`:hover`, `:focus-visible`, `:active` are not decisions your application code makes or tracks — the browser already knows them, continuously, without any state variable:
+
+```tsx
+states: {
+  hover: { background: "surfaceRaised" },
+  focusVisible: { border: "strong" },
+  active: { background: "danger" },
+}
+```
+
+Reaching for a variant to express "the user is hovering this" would mean re-inventing `:hover` in JavaScript (a mouse-enter/mouse-leave listener driving a state variable) for something the browser already does natively, for free, and more correctly (native `:focus-visible` already distinguishes keyboard from pointer focus in a way a hand-rolled equivalent would have to reimplement). Reaching for `states` to express "the application decided this is the selected item" doesn't make sense either — there is no `:selected` pseudo-class for Core to hook into, because that's not a browser interaction, it's an application decision.
+
+Keep the two separate: a component's _identity_ (which variant is active) is application state; a component's momentary _interaction_ (hover, focus-visible, active) is browser state. See [API Reference: Interactive states](api-reference.md#interactive-states) for the exact supported vocabulary.
 
 ---
 
@@ -738,6 +785,8 @@ The goal is not merely to produce predictable CSS.
 
 It is to preserve enough structure to explain that CSS later.
 
+This traceability extends to interactive states. A token used only by `states.hover.background` is just as traceable as one used by ordinary resting styling — it appears in the Inspector's **Interaction states** section (not silently, not only as internal bridge plumbing), with the same raw value, resolved value, and dependency tree the ordinary Tokens section gives every other token. A token used _both_ ways — by resting styling and by a state — appears in both places, each with its own explanation, because both usages are real.
+
 ---
 
 # 18. Inspector answers why
@@ -827,6 +876,21 @@ Impact paths
 ```
 
 and optionally highlight affected rendered elements on the page.
+
+### Rendered impact includes interaction behavior
+
+"Currently rendered" does not mean "currently visible in its resting state only." A rendered element that declares `states.hover.background = "action"` genuinely depends on `colors.action` right now — even while the pointer is nowhere near it — because the element, as rendered, exposes behavior whose result depends on that token. Changing `colors.action` changes what happens the next time someone hovers it. Impact Analysis counts that as a real, direct dependency, not something Inspector waits to notice until the pointer actually arrives:
+
+```text
+colors.action
+Direct
+via hover · background
+Button × 1
+```
+
+An element can depend on a token through its resting styling, through a declared interaction state, or both at once — and appears exactly once in the affected count either way, with every genuine explanation preserved rather than collapsed to one. An element whose _only_ effective paths to the token run through interaction states (never its resting appearance) is additionally reported as **Interaction-only** — one extra characteristic of an already-affected element, not a third impact kind alongside Direct/Indirect. This still respects the same rendered-DOM-only scope as everything else in this section (§20): no simulated hover, no event tracking, just the same declared-metadata reading Impact Analysis already does for resting styling.
+
+A state declaration that `unsafeCss` currently suppresses on a given instance (see [§15](#15-unsafecss-is-an-explicit-boundary)) never counts as an effective path for that instance — Core already knows the declaration cannot visually apply there, so Impact Analysis doesn't claim otherwise. The declaration is still real and still inspectable; it just isn't counted as affecting _this_ instance.
 
 ---
 

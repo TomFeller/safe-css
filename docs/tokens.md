@@ -1,6 +1,6 @@
 # Tokens
 
-This is an exhaustive reference for every built-in design token shipped by `@safe-css/core` (v0.1.2), derived directly from `packages/core/src/theme/defaultTheme.ts` and `theme/types.ts`. For how tokens are used inside primitive props, see the [API Reference](api-reference.md). For the reasoning behind tokens as a concept, see [Core Concepts](core-concepts.md).
+This is an exhaustive reference for every built-in design token shipped by `@safe-css/core`, derived directly from `packages/core/src/theme/defaultTheme.ts` and `theme/types.ts`. For how tokens are used inside primitive props, see the [API Reference](api-reference.md). For the reasoning behind tokens as a concept, see [Core Concepts](core-concepts.md).
 
 ---
 
@@ -33,6 +33,8 @@ border.subtle → colors.border
 `border.subtle`'s built-in value is the literal string `1px solid var(--fw-color-border)` — so changing `colors.border` also changes what `border.subtle` resolves to, everywhere it's used, without `border.subtle` itself needing to change. `border.strong` currently uses an independent literal value (`1px solid #9ca3af`) and does not reference `colors.border`.
 
 This dependency exists purely as a literal `var()` reference inside a token's own string value — there's no separate "dependency graph" data structure in Core itself. (`@safe-css/inspector`'s Impact Analysis parses these `var()` references at runtime to show direct vs. indirect impact — see `docs/core-concepts.md`.)
+
+**A token doesn't know or care whether it's consumed by ordinary resting styling or by a recipe's `states.hover`/`focusVisible`/`active` declaration** (see [API Reference: Interactive states](api-reference.md#interactive-states)) — it's the same token, the same category, the same value. Both kinds of usage are visible to the Inspector and to Impact Analysis; a token used both ways on the same element shows up in both places.
 
 ---
 
@@ -92,7 +94,7 @@ A practical place for both the `declare module` augmentation and this object is 
 
 ## Nested `ThemeProvider` scope
 
-`ThemeProvider` can be nested, but as of v0.1.2 **a nested provider is a full theme replacement for its subtree, not a partial override**. `createTheme(partialInput)` always merges over the _built-in default_ theme, never over whatever theme happens to be active higher up the tree — so an inner `ThemeProvider` that only customizes `colors.action` still resets every _other_ category to the built-in default for its subtree; it does not inherit the outer provider's customizations.
+`ThemeProvider` can be nested, but **a nested provider is a full theme replacement for its subtree, not a partial override**. `createTheme(partialInput)` always merges over the _built-in default_ theme, never over whatever theme happens to be active higher up the tree — so an inner `ThemeProvider` that only customizes `colors.action` still resets every _other_ category to the built-in default for its subtree; it does not inherit the outer provider's customizations.
 
 To give a nested subtree only a few different values while keeping everything else from the outer theme, construct the inner theme explicitly from the outer one's overrides:
 

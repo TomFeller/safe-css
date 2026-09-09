@@ -83,6 +83,37 @@ describe("SSR", () => {
   });
 });
 
+describe("SSR: Overlay.Item independent axis offsets", () => {
+  it("produces deterministic output for independent inlineOffset/blockOffset, including on a centered axis", () => {
+    const render = () =>
+      renderToStaticMarkup(
+        <ThemeProvider theme={createTheme()}>
+          <Overlay>
+            <Overlay.Item anchor="top-center" inlineOffset="card" blockOffset="element">
+              <Box background="action" />
+            </Overlay.Item>
+          </Overlay>
+        </ThemeProvider>,
+      );
+    expect(render()).toBe(render());
+  });
+
+  it("emits the resolved block offset and the centered-axis 50% inset, with no fabricated inline offset dependency", () => {
+    const html = renderToStaticMarkup(
+      <ThemeProvider theme={createTheme()}>
+        <Overlay>
+          <Overlay.Item anchor="top-center" blockOffset="card">
+            <Box background="action" />
+          </Overlay.Item>
+        </Overlay>
+      </ThemeProvider>,
+    );
+    expect(html).toContain("var(--fw-space-card)");
+    expect(html).toContain("50%");
+    expect(html).toContain('data-fw-tokens="space.card layer.overlay"');
+  });
+});
+
 // A recipe with interactive states, defined once at module scope like Card
 // above - this is the whole point being verified: nothing about states
 // requires `window`/`document`, since the entire bridge is static inline

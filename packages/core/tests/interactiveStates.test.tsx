@@ -684,6 +684,79 @@ describe("interactive states: unsafeCss-suppression diagnostic", () => {
   });
 });
 
+describe("interactive states: data-fw-state-suppressed metadata", () => {
+  it("records state|property|unsafeCssKey when unsafeCss suppresses a declared state", () => {
+    const Button = defineRecipe(Box, {
+      name: "Button",
+      base: { background: "action" },
+      states: { hover: { background: "surfaceRaised" } },
+    });
+    const { getByTestId } = renderWithTheme(
+      <Button data-testid="el" unsafeCss={{ backgroundColor: "red" }} />,
+    );
+    expect(getByTestId("el").getAttribute("data-fw-state-suppressed")).toBe(
+      "hover|background|backgroundColor",
+    );
+  });
+
+  it("emits one entry per affected state when a single unsafeCss key suppresses several declared states for the same property", () => {
+    const Button = defineRecipe(Box, {
+      name: "Button",
+      base: { background: "action" },
+      states: { hover: { background: "surfaceRaised" }, active: { background: "danger" } },
+    });
+    const { getByTestId } = renderWithTheme(
+      <Button data-testid="el" unsafeCss={{ backgroundColor: "red" }} />,
+    );
+    const entries = getByTestId("el").getAttribute("data-fw-state-suppressed")?.split(" ");
+    expect(entries).toEqual(
+      expect.arrayContaining([
+        "hover|background|backgroundColor",
+        "active|background|backgroundColor",
+      ]),
+    );
+    expect(entries).toHaveLength(2);
+  });
+
+  it("does not add the attribute at all when nothing is suppressed", () => {
+    const Button = defineRecipe(Box, {
+      name: "Button",
+      base: { background: "action" },
+      states: { hover: { background: "surfaceRaised" } },
+    });
+    const { getByTestId } = renderWithTheme(<Button data-testid="el" />);
+    expect(getByTestId("el").hasAttribute("data-fw-state-suppressed")).toBe(false);
+  });
+
+  it("does not remove data-fw-state-tokens for a suppressed declaration - the dependency is still real, just ineffective here", () => {
+    const Button = defineRecipe(Box, {
+      name: "Button",
+      base: { background: "action" },
+      states: { hover: { background: "surfaceRaised" } },
+    });
+    const { getByTestId } = renderWithTheme(
+      <Button data-testid="el" unsafeCss={{ backgroundColor: "red" }} />,
+    );
+    expect(getByTestId("el").getAttribute("data-fw-state-tokens")).toBe(
+      "hover|background|colors.surfaceRaised",
+    );
+  });
+
+  it("only reports suppression for the property that actually collides, not an unrelated declared property", () => {
+    const Button = defineRecipe(Box, {
+      name: "Button",
+      base: { background: "action", border: "subtle" },
+      states: { hover: { background: "surfaceRaised", border: "strong" } },
+    });
+    const { getByTestId } = renderWithTheme(
+      <Button data-testid="el" unsafeCss={{ backgroundColor: "red" }} />,
+    );
+    expect(getByTestId("el").getAttribute("data-fw-state-suppressed")).toBe(
+      "hover|background|backgroundColor",
+    );
+  });
+});
+
 describe("interactive states: token metadata", () => {
   it("base token metadata is preserved alongside state tokens", () => {
     const Button = defineRecipe(Box, {

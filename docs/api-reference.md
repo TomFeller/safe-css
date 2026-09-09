@@ -1,6 +1,6 @@
 # API Reference
 
-This is an exhaustive, practical reference for the current public API of `@safe-css/core` (v0.1.2). It documents every prop, default, and behavior as implemented — not a conceptual introduction. For the mental model behind the API, see [Core Concepts](core-concepts.md) and [Layout](layout.md). For every built-in design token, see [Tokens](tokens.md).
+This is an exhaustive, practical reference for the current public API of `@safe-css/core`. It documents every prop, default, and behavior as implemented — not a conceptual introduction. For the mental model behind the API, see [Core Concepts](core-concepts.md) and [Layout](layout.md). For every built-in design token, see [Tokens](tokens.md).
 
 Every code example on this page is a complete, paste-able `src/App.tsx` using only the current public API, and states what you should see after running it.
 
@@ -21,17 +21,19 @@ Every code example on this page is a complete, paste-able `src/App.tsx` using on
 - Make a header (or any element) stick to an edge while scrolling — [Sticky](#sticky)
 - Position a badge/indicator over another element — [Overlay](#overlay) / [Overlay.Item](#overlayitem)
 - Control where an `Overlay.Item` sits and how far "on top of" the corner — [Overlay.Item](#overlayitem) (`anchor`, `placement`, `offset`)
+- Independently offset an `Overlay.Item` on its inline and block axes — [Overlay.Item](#overlayitem) (`inlineOffset`, `blockOffset`)
+- Style `:hover`, `:focus-visible`, or `:active` on a recipe — [defineRecipe](#definerecipe) (`states`)
 - Make an element grow to fill available space in a flex layout — [Common primitive props](#common-primitive-props) (`grow`; supported on `Box`, `Stack`, `Row`, `ScrollArea` — not `Grid`, `Sticky`, or `Overlay`)
 - Render a semantic DOM element (`h1`, `button`, `nav`, ...) — [Common primitive props](#common-primitive-props) (`as`)
 - Create a reusable, named visual state (a "Card", a "Button") — [defineRecipe](#definerecipe)
+- Create a centered, responsive main content container — [Layout: the main-container pattern](layout.md#the-main-container-pattern)
 - Add CSS that safe-css does not model as a token/prop — [unsafeCss](#unsafecss)
 - Find every available built-in design token — [Tokens](tokens.md)
 
 **Current limitations** (see [Unsupported / unavailable capabilities](#unsupported--unavailable-capabilities) for details):
 
 - Cursor styling (`cursor: "pointer"`, etc.) has no dedicated prop — use [`unsafeCss`](#unsafecss).
-- Pseudo-states (`:hover`, `:focus-visible`, etc.) are not modeled by any primitive prop or by `unsafeCss` (which is a plain inline-style object and cannot express selectors).
-- `Overlay.Item` cannot be given independent horizontal and vertical offsets — its single `offset` prop applies uniformly to whichever edge(s) the chosen `anchor` uses.
+- Interactive states (`states` on `defineRecipe`) only support `hover`/`focusVisible`/`active`, only on `Box`-based recipes, and only for `background`/`color`/`border` — there is no `states.disabled`/`focus`/`checked`, no support on `Stack`/`Row`/`Grid`, and no arbitrary CSS inside a state. See [defineRecipe](#definerecipe).
 
 ---
 
@@ -52,7 +54,7 @@ Every primitive documented on this page (`Box`, `Stack`, `Row`, `Grid`, `ScrollA
 Notes that apply to every primitive:
 
 - **`style` is not an accepted prop on any primitive.** TypeScript rejects it. `unsafeCss` is the one documented way to set raw CSS.
-- **The `data-fw-*` attribute namespace is reserved** for the framework's own development metadata (`data-fw-primitive`, `data-fw-tokens`, `data-fw-unsafe-css`, and, on recipes, `data-fw-recipe`/`data-fw-variant`). These attributes are only present in development builds (never in production), and a consumer-supplied attribute in this namespace is silently overridden by the framework's own value — with a one-time development warning when that happens.
+- **The `data-fw-*` attribute namespace is reserved** for the framework's own development metadata (`data-fw-primitive`, `data-fw-classes`, `data-fw-tokens`, `data-fw-state-tokens`, `data-fw-state-suppressed`, `data-fw-unsafe-css`, and, on recipes, `data-fw-recipe`/`data-fw-variant`). These attributes are only present in development builds (never in production), and a consumer-supplied attribute in this namespace is silently overridden by the framework's own value — with a one-time development warning when that happens. This is also the contract the [Inspector](../packages/inspector/README.md) reads to build its own model — see [Architecture: Interactive states](architecture.md#interactive-states) and [Architecture: External Hooks](architecture.md#external-hooks).
 - If a primitive is rendered with no `ThemeProvider` ancestor, every token-based prop resolves to an unset CSS variable (the property is left at its browser-initial value) and a development warning is logged once per primitive type (not once per instance).
 - An invalid/unknown token name passed to any token prop (e.g. `padding="typo"`) does **not** fall back to a default value — it resolves to a `var()` reference that won't resolve, so the property is left unset, and a development warning is logged once per unique `(category, token, component, prop)` combination.
 
@@ -577,18 +579,47 @@ What you should see: a pill-shaped "TF" avatar with a small red "3" count badge 
 
 Also accepts every [common primitive prop](#common-primitive-props).
 
-| Prop        | Values / Type                                                                                                                                                 | Default      | Meaning                                                                                                                                                                                                                                                                        |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `anchor`    | `"top-start"` \| `"top-center"` \| `"top-end"` \| `"center-start"` \| `"center"` \| `"center-end"` \| `"bottom-start"` \| `"bottom-center"` \| `"bottom-end"` | — (required) | Which of the 9 logical positions on the `Overlay` this item is positioned against. Expressed in logical (writing-direction-independent) terms, not physical `top`/`left`.                                                                                                      |
-| `placement` | `"inside"` \| `"edge"`                                                                                                                                        | `"inside"`   | `"inside"` keeps the item flush inside the anchor corner/edge. `"edge"` centers it directly on the corner/edge itself (the notification-dot look).                                                                                                                             |
-| `offset`    | space token                                                                                                                                                   | `"none"`     | Distance from the edge(s) the anchor uses. Applied to **both** axes uniformly when the anchor has a `start`/`end` value on that axis — there is no separate horizontal/vertical offset (see [Unsupported / unavailable capabilities](#unsupported--unavailable-capabilities)). |
-| `layer`     | layer token                                                                                                                                                   | `"overlay"`  | Stacking order (`z-index`).                                                                                                                                                                                                                                                    |
+| Prop           | Values / Type                                                                                                                                                 | Default      | Meaning                                                                                                                                                                                                                     |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `anchor`       | `"top-start"` \| `"top-center"` \| `"top-end"` \| `"center-start"` \| `"center"` \| `"center-end"` \| `"bottom-start"` \| `"bottom-center"` \| `"bottom-end"` | — (required) | Which of the 9 logical positions on the `Overlay` this item is positioned against. Expressed in logical (writing-direction-independent) terms, not physical `top`/`left`.                                                   |
+| `placement`    | `"inside"` \| `"edge"`                                                                                                                                        | `"inside"`   | `"inside"` keeps the item flush inside the anchor corner/edge. `"edge"` centers it directly on the corner/edge itself (the notification-dot look).                                                                          |
+| `offset`       | space token                                                                                                                                                   | `"none"`     | Shorthand/fallback offset for **both** non-centered logical axes at once. Effective value per axis: the axis-specific prop below, then `offset`, then `"none"` — see [Independent axis offsets](#independent-axis-offsets). |
+| `inlineOffset` | space token                                                                                                                                                   | —            | Overrides `offset` for the inline axis only. Has no effect on an anchor that centers the inline axis (`top-center`, `bottom-center`, `center`) — a development warning is logged once if you pass it anyway.                |
+| `blockOffset`  | space token                                                                                                                                                   | —            | Overrides `offset` for the block axis only. Has no effect on an anchor that centers the block axis (`center-start`, `center-end`, `center`) — a development warning is logged once if you pass it anyway.                   |
+| `layer`        | layer token                                                                                                                                                   | `"overlay"`  | Stacking order (`z-index`).                                                                                                                                                                                                 |
+
+### Independent axis offsets
+
+`offset` is the shorthand: it sets both the inline and block axis at once. `inlineOffset`/`blockOffset` each independently override it for their own axis only — the other axis still falls back to `offset`, then `"none"`.
+
+```tsx
+// Both axes use "control" (identical to today's behavior with just `offset`)
+<Overlay.Item anchor="top-end" offset="control" />
+
+// inline axis uses "card"; block axis falls back to "control"
+<Overlay.Item anchor="top-end" offset="control" inlineOffset="card" />
+
+// fully independent - offset shorthand not used at all
+<Overlay.Item anchor="top-end" inlineOffset="card" blockOffset="element" />
+```
+
+`inlineOffset`/`blockOffset` are deliberately **logical**, not `horizontalOffset`/`verticalOffset` — see [Overlay](#overlay)'s RTL note. Existing `anchor`/`placement`/RTL behavior is completely unchanged by these props.
+
+**Centered axes.** Some anchors center one or both axes at a fixed `50%` instead of offsetting from an edge: `top-center`/`bottom-center` center the **inline** axis, `center-start`/`center-end` center the **block** axis, and `center` centers both. A centered axis never consumes an offset — not even the `offset` shorthand — so no token dependency is recorded for it:
+
+```tsx
+// inline axis stays centered at 50%; only the block axis (start edge) uses "card"
+<Overlay.Item anchor="top-center" blockOffset="card" />
+```
+
+Passing `inlineOffset` (or `blockOffset`) explicitly on an anchor that centers that exact axis has no visual effect and logs a one-time development warning explaining why — it never throws. The `offset` shorthand alone never warns for this, since it legitimately targets both axes and must stay ergonomic even when one happens to be centered.
 
 ### Common mistakes / ownership
 
 - See [Overlay](#overlay) above for the positioning-vs-appearance split.
 - The corner-placement transform's sign flips automatically under `dir="rtl"` — an `anchor="top-end"` item stays in the correct visual corner in both LTR and RTL without any extra work, because anchors are logical, not physical.
 - Reconstructing this by hand (`position: relative`/`absolute`, manual `top`/`right` offsets via `unsafeCss`) breaks under `dir="rtl"`, since raw `top`/`right` don't participate in logical-property flipping the way `Overlay`'s anchors do.
+- Passing `inlineOffset`/`blockOffset` on a centered axis is a silent no-op (plus a development warning) — double-check `anchor` if an axis-specific offset doesn't seem to do anything.
 
 ---
 
@@ -655,16 +686,17 @@ What you should see: three card-styled boxes — the second with a shadow (from 
 
 ### Config
 
-| Field             | Type                                                                 | Required | Meaning                                                                                                                                                                                                                                      |
-| ----------------- | -------------------------------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`            | `string`                                                             | Yes      | A stable, developer-facing identifier. Shows up in development metadata as `data-fw-recipe`. A recipe with no name is not representable — `name` is required, not optional.                                                                  |
-| `base`            | `Partial<PrimitiveProps> & { as?: ElementType }`                     | No       | Default props applied to every instance. Setting `as` here changes the recipe's rendered element _and_ its DOM prop/`ref` typing for every instance (e.g. `base: { as: "button" }` accepts `type`, `disabled`, a correctly-typed `onClick`). |
-| `variants`        | `{ [group: string]: { [option: string]: Partial<PrimitiveProps> } }` | No       | Named groups of prop overrides. Each group becomes an instance prop (e.g. `variants: { tone: {...} }` → `<Card tone="..." />`).                                                                                                              |
-| `defaultVariants` | `{ [group: string]: string }`                                        | No       | Which option each variant group uses when the instance doesn't specify one.                                                                                                                                                                  |
+| Field             | Type                                                                   | Required | Meaning                                                                                                                                                                                                                                                                                               |
+| ----------------- | ---------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`            | `string`                                                               | Yes      | A stable, developer-facing identifier. Shows up in development metadata as `data-fw-recipe`. A recipe with no name is not representable — `name` is required, not optional.                                                                                                                           |
+| `base`            | `Partial<PrimitiveProps> & { as?: ElementType }`                       | No       | Default props applied to every instance. Setting `as` here changes the recipe's rendered element _and_ its DOM prop/`ref` typing for every instance (e.g. `base: { as: "button" }` accepts `type`, `disabled`, a correctly-typed `onClick`).                                                          |
+| `variants`        | `{ [group: string]: { [option: string]: Partial<PrimitiveProps> } }`   | No       | Named groups of prop overrides. Each group becomes an instance prop (e.g. `variants: { tone: {...} }` → `<Card tone="..." />`). Answers "what state has the _application_ decided this component is in?" — see [Interactive states](#interactive-states) for the different question `states` answers. |
+| `defaultVariants` | `{ [group: string]: string }`                                          | No       | Which option each variant group uses when the instance doesn't specify one.                                                                                                                                                                                                                           |
+| `states`          | `{ hover?, focusVisible?, active?: { background?, color?, border? } }` | No       | Native browser interaction styling — answers "what is the browser doing right now?" See [Interactive states](#interactive-states) below; this is a distinct model from `variants`, not a shorthand for it.                                                                                            |
 
 ### Precedence
 
-A recipe's props resolve in one deterministic order, applied as a plain object merge (no CSS specificity involved):
+A recipe's props resolve in one deterministic order:
 
 ```text
 primitive defaults
@@ -673,17 +705,80 @@ recipe base
       ↓
 recipe variant
       ↓
+interactive state
+      ↓
 instance props
       ↓
 unsafeCss
 ```
 
+`base`/variants/instance props are a plain object merge with no CSS specificity involved, exactly as in v0.1. `states` is layered in separately (it becomes a native `:hover`/`:focus-visible`/`:active` CSS rule, which can't be expressed as a JS object merge — see [Interactive states](#interactive-states)), but an instance prop or `unsafeCss` for the _same property_ still always wins over it, deterministically, by construction — never by relying on CSS specificity.
+
 If two _different_ active variant groups set the same underlying prop, the group declared later in `variants: {...}` wins — the same left-to-right rule as any other merge here — and a development warning fires naming the collision.
+
+### Interactive states
+
+`states` declares how a recipe should look for the three native browser interaction pseudo-classes — a fixed, small vocabulary, not a general CSS mechanism:
+
+- **Supported states:** `hover`, `focusVisible`, `active` — nothing else. There is no `states.focus` (plain `:focus`), no `states.disabled`, `states.checked`, `states.expanded`, etc.
+- **Supported properties inside a state:** `background`, `color`, `border` — nothing else. No `padding`, `radius`, `shadow`, sizing, or arbitrary CSS inside a state.
+- **Supported on `Box`-based recipes only.** A recipe built on `Stack`, `Row`, or `Grid` has no eligible `states` keys at all — TypeScript rejects any key you try to set, at compile time, because none of those primitives expose `background`/`color`/`border`.
+- Token types inside a state match the corresponding `Box` prop exactly (`background`/`color` take a color token, `border` takes a border token or the `"none"` literal).
+
+```tsx
+import { Box, defineRecipe } from "@safe-css/core";
+
+const Button = defineRecipe(Box, {
+  name: "Button",
+
+  base: {
+    as: "button",
+    padding: "control",
+    radius: "control",
+    background: "action",
+    color: "surface",
+    border: "none",
+  },
+
+  states: {
+    hover: {
+      background: "surfaceRaised",
+    },
+
+    focusVisible: {
+      border: "strong",
+    },
+
+    active: {
+      background: "danger",
+    },
+  },
+});
+```
+
+**Instance suppression.** If an instance sets a property a state also declares, the instance owns that property completely — every state's treatment of it is suppressed on that instance, not just overridden while hovered:
+
+```tsx
+<Button background="danger" />
+// resting AND hovered background are both "danger" - states.hover.background
+// never applies to this instance. This is intentional, deterministic
+// precedence (see above), not a CSS specificity quirk. A development
+// warning names the recipe, the property, and which states were suppressed.
+```
+
+**`unsafeCss` suppression.** The same thing happens when `unsafeCss` sets the same rendered CSS property a state targets (e.g. `states.hover.background` vs. `unsafeCss={{ backgroundColor: "red" }}`) — `unsafeCss` always wins, and a development warning names the collision. This detection only covers a small, fixed table of known collisions (`background`↔`backgroundColor`/`background`, `color`↔`color`, `border`↔`border`); `unsafeCss`'s `borderColor`/`borderWidth`/`borderStyle` longhands are a documented, accepted gap — not detected, since whether one actually overrides the `border` shorthand's effect depends on declaration order in a way that can't be reliably determined without a full CSS parser.
+
+**Simultaneous states.** If more than one declared state is true at once for the same property (e.g. a mouse-held-down keyboard-focused button is both `:active` and `:focus-visible`), Core resolves this via a fixed priority — `hover < focus-visible < active` — never CSS selector specificity or stylesheet order. You never need to reason about specificity to predict which state wins. This priority only matters when multiple states target the _same_ property; states on different properties are independent.
+
+Core uses real, native `:hover`/`:focus-visible`/`:active` CSS pseudo-classes — there is no JavaScript mouse/focus event tracking involved, and no client JS is required for the interaction itself to work (it's already correct in server-rendered markup, before any hydration). Native `:disabled` elements are structurally excluded from all three via `:not(:disabled)` on every rule, from day one — but a _configurable_ `states.disabled` (styling that isn't simply "this is the browser's native disabled state") does not exist yet.
+
+See [Inspector: Interaction States](../packages/inspector/README.md) and [Architecture: Interactive states](architecture.md#interactive-states) for how this shows up in the dev tooling.
 
 ### Common mistakes / ownership
 
 - A recipe may only set props the underlying primitive already supports. It cannot introduce selectors (`"& > *"`, `".foo"`, etc.) — there is no compound-variant engine.
 - Overriding `as` at the _instance_ level on an already-defined recipe (e.g. rendering a `ButtonLike` recipe as an `<a>` for one particular usage) is not typed — a recipe's element and DOM prop/`ref` shape are fixed by its `base.as`, not re-inferable per instance.
+- Don't reach for `variants` to express "the user is hovering this" (use `states`), and don't reach for `states` to express "the application has decided this nav item is the current one" (use `variants`) — see [Interactive states](#interactive-states) above and [Core Concepts](core-concepts.md) for the full distinction.
 
 ---
 
@@ -743,17 +838,20 @@ What you should see: a card-padded box, slightly rotated, showing a pointer curs
 
 These are capabilities a developer is likely to look for that are **not currently modeled natively** by safe-css. This section states that fact and, where one exists, the currently available escape hatch — it does not propose a future API.
 
-### Pseudo-state styling (`:hover`, `:focus-visible`, `:active`, etc.)
+### Pseudo-state styling beyond `hover`/`focus-visible`/`active` on `background`/`color`/`border`
 
-No primitive prop models pseudo-state styling, and `unsafeCss` cannot express it either — `unsafeCss` is a plain `React.CSSProperties` inline-style object, and inline styles cannot contain selectors. There is currently no primitive-level escape hatch for this within `@safe-css/core`. Reaching a hover/focus state today requires styling outside safe-css entirely (a CSS module, a global stylesheet rule, or a CSS-in-JS library) targeting the rendered element via `className` or `id`.
+`defineRecipe`'s `states` (see [Interactive states](#interactive-states)) covers exactly `hover`, `focusVisible`, and `active`, on `background`/`color`/`border`, on `Box`-based recipes only. Outside that fixed vocabulary, there is no primitive-level escape hatch:
+
+- No `states.focus` (plain `:focus`, as opposed to `:focus-visible`), `states.disabled`, `states.checked`, `states.expanded`, `:visited`, or any other pseudo-class.
+- No interactive states at all on `Stack`, `Row`, or `Grid` (or any primitive other than `Box`).
+- No `padding`, `radius`, `shadow`, sizing, or arbitrary CSS inside a state — only `background`/`color`/`border`.
+- No transition/animation configuration for a state change.
+
+Reaching any of these today requires styling outside safe-css entirely (a CSS module, a global stylesheet rule, or a CSS-in-JS library) targeting the rendered element via `className` or `id` — the Inspector's "External hooks" panel can help you confirm which classes/id on a rendered element are actually yours to target this way, not framework-generated. See [`packages/inspector/README.md`](../packages/inspector/README.md).
 
 ### Cursor styling
 
 There is no `cursor` prop on any primitive. The available escape hatch is `unsafeCss={{ cursor: "pointer" }}` (or any other CSS `cursor` value) — this is a legitimate, silent use of `unsafeCss`; `cursor` is not in the suspicious-pattern table above.
-
-### Independent horizontal/vertical `Overlay.Item` offsets
-
-`Overlay.Item` has a single `offset` prop. Reading the implementation: for whichever axis (inline or block) the chosen `anchor` resolves to `"start"` or `"end"`, that same `offset` value is used; for an axis where the anchor resolves to `"center"` (e.g. the inline axis of `top-center`), the offset has no effect at all — that axis is always centered at `50%` regardless of `offset`. There is no way to give an `Overlay.Item` a different horizontal offset than its vertical offset. If you need that, you currently need `unsafeCss` with manually computed `insetInlineStart`/`insetInlineEnd`/`insetBlockStart`/`insetBlockEnd` values, at the cost of losing `Overlay`'s automatic RTL-correctness for that item.
 
 ### Arbitrary/non-token spacing, color, radius, size, border, or shadow values
 

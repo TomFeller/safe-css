@@ -67,6 +67,77 @@ export interface UnsafeCssInfo {
   uncertain: boolean;
 }
 
+/**
+ * The fixed, closed set of interactive states Core supports (v0.4), and the
+ * fixed set of visual properties a state declaration can target. Defined
+ * here, independently of `@safe-css/core`'s own `RecipeStateName`/
+ * `StateBridgeProperty` types, on purpose: this package owns its own
+ * understanding of the documented DOM contract (`data-fw-state-tokens`,
+ * `data-fw-state-suppressed`, `--fw-state-*` custom properties) rather than
+ * importing Core's implementation types - see `inspection/metadata.ts`.
+ */
+export type InteractionStateName = "hover" | "focusVisible" | "active";
+export type InteractionStateProperty = "background" | "color" | "border";
+
+/** One parsed `data-fw-state-tokens` entry: `"hover|background|colors.action"` -> `{ state: "hover", property: "background", token: "colors.action" }`. */
+export interface InspectorStateTokenRef {
+  state: InteractionStateName;
+  property: InteractionStateProperty;
+  token: string;
+}
+
+/** One parsed `data-fw-state-suppressed` entry: `"hover|background|backgroundColor"` -> `{ state: "hover", property: "background", unsafeCssKey: "backgroundColor" }`. */
+export interface InspectorStateSuppressionRef {
+  state: InteractionStateName;
+  property: InteractionStateProperty;
+  unsafeCssKey: string;
+}
+
+/**
+ * One declared property within one interactive state - either token-backed
+ * (`token` is set, reusing the exact same `InspectedToken` shape/machinery
+ * as the ordinary Tokens section: raw/resolved value, dependency tree,
+ * owner, "Analyze impact") or a literal Core supports without a token (only
+ * `border: "none"` today - `literal` is set instead, and there is
+ * deliberately no fabricated token to analyze impact on).
+ */
+export interface InteractionStateDeclaration {
+  property: InteractionStateProperty;
+  token?: InspectedToken;
+  literal?: string;
+  /** Set when `data-fw-state-suppressed` marks this exact declaration as ineffective on this instance - see `Box.tsx`'s `STATE_BRIDGE_UNSAFE_CSS_KEYS` detection in Core. The declaration is still real; it just isn't currently visually effective here. */
+  suppressedBy?: { unsafeCssKey: string };
+}
+
+/** One interactive state and everything it declares on the selected element. */
+export interface InteractionState {
+  state: InteractionStateName;
+  /** Human-facing label: `"hover"` / `"focus-visible"` / `"active"` - never the implementation name `focusVisible`. */
+  label: string;
+  declarations: InteractionStateDeclaration[];
+}
+
+/**
+ * What's on the selected element that safe-css itself didn't put there -
+ * "does this rendered element expose hooks something outside safe-css may
+ * be using" (v0.4 Phase 3). `frameworkClasses` is Core's own authoritative
+ * `data-fw-classes` list (never guessed via a `fw-` prefix check, which a
+ * custom `as` component or a future non-`fw-`-prefixed class could defeat);
+ * `externalClasses` is the element's actual `classList` minus that set.
+ * This is deliberately *not* a claim that any of these actually style the
+ * element - a class can exist for CSS, JS querying, testing, or a
+ * third-party library - see `inspection/inspectElement.ts`'s
+ * `buildExternalHooks`.
+ */
+export interface ExternalHooksInfo {
+  /** Core's own `data-fw-classes`, parsed - every class this element's primitive itself generated. */
+  frameworkClasses: string[];
+  /** The element's actual `classList` minus `frameworkClasses` - classes something outside safe-css put there. */
+  externalClasses: string[];
+  /** The element's `id` attribute, if any non-empty value is set. Never sourced from Core metadata - read directly from the DOM, since Core never records `id`. */
+  id?: string;
+}
+
 export interface InspectedElement {
   element: HTMLElement;
   tagName: string;
@@ -75,6 +146,18 @@ export interface InspectedElement {
   variants: InspectorVariant[];
   /** Nearest-first: `ancestry[0]` is the immediate safe-css parent, the last entry is the outermost. */
   ancestry: InspectorAncestor[];
+  /**
+   * Every token this element depends on through its resting/current
+   * styling. A token used *only* by an interactive state (no resting
+   * usage at all) is deliberately excluded here - it appears exclusively
+   * under `interactionStates` instead, so this list never shows framework
+   * bridge plumbing (`--fw-state-*-value`) as a real "Used by" CSS
+   * property. A token used both ways still appears in both places - see
+   * `inspection/inspectElement.ts`.
+   */
   tokens: InspectedToken[];
+  /** Ordered `hover` -> `focusVisible` -> `active`; a state with no declarations at all on this element is omitted. */
+  interactionStates: InteractionState[];
+  externalHooks: ExternalHooksInfo;
   unsafeCss: UnsafeCssInfo;
 }

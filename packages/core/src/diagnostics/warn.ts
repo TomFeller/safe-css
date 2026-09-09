@@ -55,6 +55,32 @@ export function warnGridConflict(mode: DiagnosticsMode): void {
 }
 
 /**
+ * `<Overlay.Item anchor="...">` centers one or both logical axes for some
+ * anchor values (`top-center`/`bottom-center` center the inline axis;
+ * `center-start`/`center-end` center the block axis; `center` centers
+ * both - see `internal/overlayAnchors.ts`'s `OVERLAY_ANCHOR_GEOMETRY`). A
+ * centered axis is always positioned at a fixed `50%`, so an axis-specific
+ * `inlineOffset`/`blockOffset` targeting that exact axis can never have any
+ * effect - this is a one-time, informational heads-up, not an error, and
+ * deliberately does NOT fire for the general `offset` shorthand (which
+ * legitimately targets both axes at once and must stay ergonomic even when
+ * one axis happens to be centered).
+ */
+export function warnOverlayCenteredAxisOffset(
+  mode: DiagnosticsMode,
+  prop: "inlineOffset" | "blockOffset",
+  anchor: string,
+): void {
+  warnIfEnabled(
+    mode,
+    `overlay-centered-offset:${prop}:${anchor}`,
+    `<Overlay.Item> received \`${prop}\` with anchor="${anchor}", which centers that axis ` +
+      `(a fixed 50% inset, not an edge offset). \`${prop}\` has no effect here and is ignored. ` +
+      `Use a non-centered anchor for that axis, or \`offset\` for the other, non-centered axis.`,
+  );
+}
+
+/**
  * `unsafeCss` is intentionally allowed and does not warn merely for
  * existing - that would train developers to ignore diagnostics entirely
  * (see docs/architecture.md#unsafecss). Instead, only properties matching a
@@ -139,7 +165,8 @@ export function warnRecipeVariantCollision(
 /**
  * The `data-fw-*` namespace is reserved for safe-css's own traceability
  * metadata (`data-fw-primitive`, `data-fw-recipe`, `data-fw-variant`,
- * `data-fw-tokens`, `data-fw-state-tokens`, `data-fw-unsafe-css`). A
+ * `data-fw-tokens`, `data-fw-state-tokens`, `data-fw-state-suppressed`,
+ * `data-fw-classes`, `data-fw-unsafe-css`). A
  * consumer-supplied attribute in this namespace never wins - the
  * framework's own value is always applied last at each call site - so this
  * warns rather than silently accepting (and dropping) whatever the

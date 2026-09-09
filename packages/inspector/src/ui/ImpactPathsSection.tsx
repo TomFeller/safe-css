@@ -1,3 +1,4 @@
+import { stateLabel } from "../inspection/metadata";
 import type { ImpactPath } from "../impact/types";
 
 /**
@@ -6,6 +7,12 @@ import type { ImpactPath } from "../impact/types";
  * (recipe/primitive) and how many rendered elements share this exact
  * path - e.g. `colors.border └── border.subtle └── Card ×18`. Direct paths
  * are a single token long, so they render as just `radius.card └── Card ×18`.
+ *
+ * `path.via` (v0.4 Phase 2), when present, adds a "via hover · background"
+ * line - the human-facing state label (`stateLabel`, never the
+ * implementation name `focusVisible`) plus the declared property. A path
+ * with no `via` renders exactly as it always has - ordinary/resting usage
+ * needs no extra explanation.
  */
 function PathRow({ path }: { path: ImpactPath }) {
   return (
@@ -16,6 +23,14 @@ function PathRow({ path }: { path: ImpactPath }) {
           <span className="fw-inspector-code">{token}</span>
         </div>
       ))}
+      {path.via && (
+        <div
+          className="fw-inspector-impact-path-via"
+          style={{ paddingLeft: path.tokens.length * 12 }}
+        >
+          via {stateLabel(path.via.state)} · {path.via.property}
+        </div>
+      )}
       <div className="fw-inspector-ancestry-item" style={{ paddingLeft: path.tokens.length * 12 }}>
         <span className="fw-inspector-depth">{"└"}</span>
         <span className="fw-inspector-code">

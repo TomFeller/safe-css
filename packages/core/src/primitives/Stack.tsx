@@ -92,7 +92,11 @@ export const Stack = forwardRef(function Stack(
       className={cx(...classes, className)}
       style={finalStyle}
       {...rest}
-      {...debugAttributes({ primitive: "Stack", tokens, unsafeCssCount }, rest, diagnostics)}
+      {...debugAttributes(
+        { primitive: "Stack", classes, tokens, unsafeCssCount },
+        rest,
+        diagnostics,
+      )}
     >
       {children}
     </Component>

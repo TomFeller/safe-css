@@ -416,3 +416,40 @@ describe("SafeCssInspector", () => {
     );
   });
 });
+
+describe("SafeCssInspector: External hooks (v0.4 Phase 3)", () => {
+  it("shows the External hooks section, with className and id, for a real picked element", async () => {
+    const fixture = document.createElement("div");
+    fixture.setAttribute("data-fw-primitive", "Box");
+    fixture.setAttribute("data-fw-classes", "fw-Box");
+    fixture.className = "fw-Box navigation-item active";
+    fixture.id = "primary-nav-home";
+    document.body.appendChild(fixture);
+
+    render(<SafeCssInspector />);
+    const shadowRoot = getShadowRoot();
+    await pickAndSelect(shadowRoot, fixture);
+
+    const panel = shadowRoot.querySelector(".fw-inspector-panel");
+    expect(panel?.textContent).toContain("External hooks");
+    expect(panel?.textContent).toContain("navigation-item");
+    expect(panel?.textContent).toContain("active");
+    expect(panel?.textContent).toContain("primary-nav-home");
+  });
+
+  it("omits the External hooks section entirely for a framework-only element", async () => {
+    const fixture = document.createElement("div");
+    fixture.setAttribute("data-fw-primitive", "Box");
+    fixture.setAttribute("data-fw-classes", "fw-Box");
+    fixture.className = "fw-Box";
+    document.body.appendChild(fixture);
+
+    render(<SafeCssInspector />);
+    const shadowRoot = getShadowRoot();
+    await pickAndSelect(shadowRoot, fixture);
+
+    expect(shadowRoot.querySelector(".fw-inspector-panel")?.textContent).not.toContain(
+      "External hooks",
+    );
+  });
+});

@@ -27,12 +27,13 @@ safe-css removes that choice at the API level. There is no `display`, `position`
 
 ## 2. What makes it different
 
-- **No margin props, anywhere.** Spacing between siblings is the parent's job (`<Stack gap="section">`), never the child's. See [Core rules](#core-rules).
+- **No margin props, anywhere.** Spacing between siblings is the parent's job (`<Stack gap="section">`), never the child's. See [Core rules](#15-core-rules).
 - **No generic CSS props.** `display`, `position`, `overflow`, `zIndex`, `transform` etc. are not part of the public API. Positioning and scrolling are behaviors (`Sticky`, `Overlay`, `ScrollArea`), not raw CSS.
 - **Tokens, not values.** `padding="card"`, not `padding="17px"`. Invalid tokens warn in development and fail safe (no invented fallback) rather than silently rendering something.
 - **Intrinsic responsiveness.** `Grid` adapts with `auto-fit`/`minmax()`, `Row` wraps with real flex-wrap. No breakpoint props, no `sm`/`md`/`lg`.
-- **Deterministic precedence, no specificity.** `primitive defaults < recipe base < recipe variant < instance props < unsafeCss` is a plain object merge in JavaScript — never a CSS specificity fight.
+- **Deterministic precedence, no specificity.** `primitive defaults < recipe base < recipe variant < interactive state < instance props < unsafeCss` is resolved in JavaScript (with a small, bounded static-CSS bridge for the native `:hover`/`:focus-visible`/`:active` layer — see [Recipes](#13-recipes)) — never a CSS specificity fight.
 - **A named escape hatch.** `unsafeCss` exists and is fully supported; it just says out loud that the framework can no longer guarantee its safety properties for that element.
+- **Interaction states are native, not JavaScript.** A recipe can declare `hover`/`focus-visible`/`active` styling for `background`/`color`/`border`; Core renders it as real `:hover`/`:focus-visible`/`:active` CSS, with no mouse/focus event tracking. See [Recipes](#13-recipes).
 
 ## 3. Installation
 
@@ -250,6 +251,14 @@ Positioning relative to another element, without ever writing `position: relativ
 
 `anchor` is one of the 9 grid positions (`top-start` … `bottom-end`, plus `center`). `placement="inside"` (default) keeps the item flush inside the corner/edge; `placement="edge"` centers it on the corner/edge itself (the classic notification-dot look). Anchors use CSS logical properties (`inset-inline-start/end`) and the writing-direction-dependent transform lives in CSS behind a `[dir="rtl"]` selector — Overlay is correct under both LTR and RTL without any JavaScript direction detection.
 
+`offset` is a shorthand that positions both non-centered axes at once; `inlineOffset`/`blockOffset` independently override it per axis (`inlineOffset ?? offset ?? "none"`, and likewise for block):
+
+```tsx
+<Overlay.Item anchor="top-end" inlineOffset="card" blockOffset="element" />
+```
+
+An anchor that centers an axis (`top-center`/`bottom-center` center inline, `center-start`/`center-end` center block, `center` centers both) ignores any offset for that axis entirely — passing an axis-specific offset for a centered axis logs a one-time development warning rather than doing anything. See [`docs/api-reference.md#overlayitem`](docs/api-reference.md#overlayitem).
+
 ## 13. Recipes
 
 `defineRecipe` builds a reusable component from a primitive plus a fixed set of variants — without ever exposing arbitrary CSS or selectors.
@@ -271,7 +280,7 @@ const Card = defineRecipe(Box, {
 <Card tone="raised" padding="section" />  // instance props still win
 ```
 
-`name` is required (not optional) as of v0.1.1: an unnamed recipe can't show up in dev metadata or, later, in blast-radius analysis ("which recipes does this token change affect").
+`name` is required (not optional) as of v0.1.1: an unnamed recipe can't show up in dev metadata or in Impact Analysis ("which recipes does this token change affect").
 
 A recipe may only set props the underlying primitive already supports, cannot introduce selectors (`"& > *"`, `".foo"`, etc. are not part of this API), and there is no compound-variant engine in v0.1. See [`docs/architecture.md`](docs/architecture.md#recipes) for the one narrow TypeScript limitation this design has (variant _values_ aren't always compile-time-checked against the primitive's props the way `base` is — a documented, deliberate trade-off, not an oversight; teams that want the guarantee back can opt in with `variants: {...} satisfies RecipeVariantMap<BoxProps>`).
 
@@ -295,6 +304,32 @@ Resolved value:
   control
 ```
 
+### Interactive states
+
+A `Box`-based recipe can also declare native browser-interaction styling — `hover`, `focus-visible`, and `active` — for `background`, `color`, and `border`:
+
+```ts
+const Button = defineRecipe(Box, {
+  name: "Button",
+  base: {
+    as: "button",
+    padding: "control",
+    background: "action",
+    color: "surface",
+    border: "none",
+  },
+  states: {
+    hover: { background: "surfaceRaised" },
+    focusVisible: { border: "strong" },
+    active: { background: "danger" },
+  },
+});
+```
+
+This is a different question than `variants` answers. `variants` express what state the _application_ has decided a component is in (`selected`, `expanded`, the current nav item); `states` express what the _browser_ is doing right now. Don't use one to answer the other's question.
+
+Core renders `states` as real `:hover`/`:focus-visible`/`:active` CSS — there is no JavaScript mouse/focus tracking, and it works correctly in server-rendered markup before any client JS runs. If more than one declared state is true at once for the same property, a fixed priority applies — `hover < focus-visible < active` — never CSS specificity. An instance prop for the same property (`<Button background="danger" />`) suppresses every state's treatment of that property on that instance, by deterministic design, with a development warning explaining why. See [`docs/api-reference.md#interactive-states`](docs/api-reference.md#interactive-states) for the full precedence chain, the supported-property list, and the `unsafeCss` suppression case.
+
 ## 14. unsafeCss
 
 The escape hatch, and it's a real one:
@@ -313,43 +348,49 @@ Custom `marginLeft` detected in unsafeCss on <Box>: marginLeft: 17px;
 Spacing between siblings should normally be controlled by the parent layout using `gap`, not a child's own margin.
 ```
 
-This is a small, first-pass heuristic, not a CSS linter — see [`docs/architecture.md#unsafecss`](docs/architecture.md#unsafecss) for the exact rules and the reasoning behind "warn on suspicious, not on all."
+This is a small, first-pass heuristic, not a CSS linter — see [`docs/architecture.md#unsafecss-diagnostics`](docs/architecture.md#unsafecss-diagnostics) for the exact rules and the reasoning behind "warn on suspicious, not on all."
 
 ## 15. Core rules
 
 1. **No public margin props.** Spacing between siblings belongs to the parent (`gap`), never the child (`margin*`) — and every safe-css primitive is itself scoped-normalized to `margin: 0`, so this holds even for `as="h1"`/`as="p"`/etc. rendering an element that would otherwise carry a browser default margin. See [`docs/architecture.md#scoped-normalization`](docs/architecture.md#scoped-normalization).
 2. **No generic CSS props.** No `display`, `position`, `overflow`, `zIndex`, `transform`, `flexDirection`, etc. Those are behaviors with their own primitive, or `unsafeCss`.
 3. **Tokens, not values.** Every spacing/color/radius/size/border/shadow/layer prop takes a theme token name.
-4. **Deterministic precedence.** `primitive defaults < recipe base < recipe variant < instance props < unsafeCss`, always — never CSS specificity.
+4. **Deterministic precedence.** `primitive defaults < recipe base < recipe variant < interactive state < instance props < unsafeCss`, always — never CSS specificity.
 5. **Scoped by construction.** Generated styles never use descendant selectors, never style siblings, never depend on DOM location.
 6. **No global reset.** Importing safe-css does not restyle `body`, `button`, `h1`, or anything else you didn't render through it — the scoped `margin: 0` above only ever applies to elements a safe-css primitive itself rendered.
 7. **Composable tokens.** When two tokens represent the same design decision (e.g. a border's color), the dependent one references the other's CSS variable rather than duplicating its value, so changing the source token changes everything that depends on it. See [`docs/architecture.md#token-dependencies`](docs/architecture.md#token-dependencies).
-8. **`data-fw-*` is reserved.** Every attribute in that namespace (`data-fw-primitive`, `data-fw-recipe`, `data-fw-variant`, `data-fw-tokens`, `data-fw-unsafe-css`) is framework-owned traceability metadata. The framework's own value always wins if a consumer happens to pass one of these directly, and development builds warn when that happens so it's never a silent, confusing overwrite. See [`docs/architecture.md#future-traceability`](docs/architecture.md#future-traceability).
+8. **`data-fw-*` is reserved.** Every attribute in that namespace (`data-fw-primitive`, `data-fw-classes`, `data-fw-recipe`, `data-fw-variant`, `data-fw-tokens`, `data-fw-state-tokens`, `data-fw-state-suppressed`, `data-fw-unsafe-css`) is framework-owned traceability metadata. The framework's own value always wins if a consumer happens to pass one of these directly, and development builds warn when that happens so it's never a silent, confusing overwrite. See [`docs/architecture.md#traceability-metadata`](docs/architecture.md#traceability-metadata).
 
 ## 16. Inspector
 
-`@safe-css/inspector` (v0.3.0) is development-only inspection tooling: it reads and explains rendered safe-css styling without editing your application's styles or theme.
+`@safe-css/inspector` is development-only inspection tooling: it reads and explains rendered safe-css styling without editing your application's styles or theme.
 
-It answers two related questions:
+It answers three related questions:
 
 - **"Why does this element look the way it does?"** — select a rendered safe-css element and inspect its primitive, recipe, active variants, safe-css ancestry, tokens, resolved token values, token dependencies, and any `unsafeCss` in play.
-- **"If I change this token, what currently rendered UI will be affected?"** — run **Impact Analysis** from a token to see the safe-css elements currently rendered in the document that depend on that exact token definition.
+- **"What interaction styling does this element define?"** — the **Interaction states** panel shows every declared `hover`/`focus-visible`/`active` rule (as human-facing labels, never `focusVisible`), each with its token's raw/resolved value and dependency tree, or the literal value for `border: "none"`. A declaration that `unsafeCss` currently suppresses on this instance still shows, marked as suppressed — it isn't hidden.
+- **"If I change this token, what currently rendered UI — including interaction behavior — will be affected?"** — run **Impact Analysis** from a token to see the safe-css elements currently rendered in the document that depend on that exact token definition, whether through their resting styling or through a declared interaction state.
 
-Impact Analysis distinguishes **direct** consumers from **indirect** consumers that depend on the token through another token:
+Impact Analysis distinguishes **direct** consumers from **indirect** consumers that depend on the token through another token, and marks the path with the interaction state it runs through when relevant:
 
 ```text
 colors.border
       ↓
 border.subtle
-      ↓
-Card
+Indirect
+via focus-visible · border
+Card × 2
 ```
+
+A rendered element whose _only_ effective path to the analyzed token is through an interaction state (never its resting appearance) is additionally counted as **Interaction-only** — an orthogonal characteristic, not a third impact kind; it's still either Direct or Indirect. An element using the token both ways counts once, with both explanations, and is not interaction-only. A state declaration that `unsafeCss` suppresses never counts as an effective path.
 
 Results can be grouped by affected recipes and primitives, include the dependency paths that explain the impact, and can be highlighted directly on the rendered page.
 
 Impact Analysis respects theme scopes. The analysis target is not just a token name, but the token definition in its active theme scope, so a matching token resolved from another nested `ThemeProvider` is not incorrectly counted as part of the same change.
 
 Impact Analysis is intentionally based on the **currently rendered DOM**. It does not scan source files, crawl unmounted routes, or retain historical renders.
+
+The **External hooks** panel shows a selected element's `className`/`id` that safe-css itself did not generate — i.e. classes/an id something _outside_ safe-css might be relying on (external CSS, a test selector, a JS query, a third-party library). It's computed from Core's own dev-only `data-fw-classes` metadata (the exact list of framework-generated classes), not a `fw-` prefix guess, so a consumer class that happens to start with `fw-` is still correctly reported as external. Inspector never claims these classes definitely style anything — it only reports that they exist and aren't safe-css's own.
 
 Install the Inspector as a development dependency:
 
@@ -394,12 +435,13 @@ The Inspector reads Core's rendered DOM/CSS output only — never Core internals
 
 See [`docs/architecture.md#inspector`](docs/architecture.md#inspector) for implementation details and [`docs/getting-started.md`](docs/getting-started.md) for the user-facing workflow.
 
-## 17. v0.1.2 limitations
+## 17. Current limitations
 
+- **Interactive states cover a fixed, small vocabulary.** `hover`/`focus-visible`/`active` on `background`/`color`/`border`, on `Box`-based recipes only. No `focus` (plain), `disabled`, `checked`, or other pseudo-classes; no interactive states on `Stack`/`Row`/`Grid`; no transition/animation configuration. See [Recipes → Interactive states](#interactive-states).
 - **Fixed default token categories.** `colors`, `space`, `radius`, `size`, `border`, `shadow`, `layer` are the built-in shape; extra tokens need a small TypeScript declaration-merge (see [Theme](#5-theme)), not a fully generic per-app token schema. TypeScript accepting an augmented token name doesn't guarantee the runtime theme defines it — a `satisfies Theme`-checked custom theme closes that gap for teams that want it; the always-on runtime warning is the fallback for everyone else.
-- **Nested `ThemeProvider` is a full theme replacement, not a partial/inherited override.** See [Theme](#5-theme) and [`docs/architecture.md#nested-themes`](docs/architecture.md#nested-themes). Partial nested themes may be worth adding later; they aren't implemented in v0.1.2.
+- **Nested `ThemeProvider` is a full theme replacement, not a partial/inherited override.** See [Theme](#5-theme) and [`docs/architecture.md#nested-themes`](docs/architecture.md#nested-themes). Partial nested themes may be worth adding later; they aren't currently implemented.
 - **Recipe variant values aren't always compile-time-validated** against the underlying primitive's props (only `base` reliably is) — a deliberate trade-off documented in [`docs/architecture.md`](docs/architecture.md#recipes). Opt in with `satisfies RecipeVariantMap<P>` for the stricter check.
-- **A recipe's element (and therefore its DOM prop/`ref` typing) is fixed by `base.as`, not overridable per instance.** DOM props and `ref` are both correctly typed for the recipe's own element as of v0.1.2 (see [Recipes](#13-recipes)); instance-level polymorphic `as` on a recipe remains untyped.
+- **A recipe's element (and therefore its DOM prop/`ref` typing) is fixed by `base.as`, not overridable per instance.** DOM props and `ref` are both correctly typed for the recipe's own element (see [Recipes](#13-recipes)); instance-level polymorphic `as` on a recipe remains untyped.
 - **No compound variants** in `defineRecipe`.
 - **Impact Analysis is rendered-DOM-only.** It analyzes safe-css elements currently rendered in the document. It does not scan source code, crawl unmounted routes, or retain historical renders, so its counts describe the UI that exists right now rather than every possible usage in the repository. See [Inspector](#16-inspector) and [`docs/architecture.md`](docs/architecture.md#limitations).
 - **No portal-aware primitives yet.** Modal/Tooltip/Popover/Toast are still out of scope, and CSS custom-property inheritance doesn't cross a React portal boundary into `document.body`. The architecture is prepared for this (see [`docs/architecture.md#portals`](docs/architecture.md#portals)) but nothing consumes it yet.
@@ -413,7 +455,7 @@ See [`docs/architecture.md#inspector`](docs/architecture.md#inspector) for imple
 
 ```text
 packages/core/       the published @safe-css/core library
-packages/inspector/  the published @safe-css/inspector dev-tool (v0.3.0)
+packages/inspector/  the published @safe-css/inspector dev-tool
 apps/demo/           a realistic dashboard app consuming both
 docs/architecture.md    engine internals, precedence, SSR, diagnostics, Inspector, future work
 ```

@@ -4,9 +4,45 @@ import type { DiagnosticsMode } from "../../theme/types";
 
 export interface DebugMeta {
   primitive: string;
+  /**
+   * Every CSS class *this primitive itself* generated for the rendered
+   * element (e.g. `["fw-Box", "fw-grow"]`) - never the consumer's own
+   * `className`, and never a recipe-fabricated class (a recipe never
+   * generates its own CSS class at all; `data-fw-recipe` is the recipe
+   * identity mechanism - see `recipes/defineRecipe.ts`). This is what lets a
+   * consumer (the Inspector's "External Hooks") reliably subtract
+   * framework-owned classes from an element's actual `classList` to find
+   * classes something *outside* safe-css is relying on, without resorting to
+   * prefix-matching (`className.startsWith("fw-")`), which a custom `as`
+   * component or a future non-`fw-`-prefixed class could defeat.
+   */
+  classes?: string[];
+  /**
+   * Every theme token this element depends on - both its resting/current
+   * styling AND its recipe's interactive-state styling (`states.hover`/
+   * `focusVisible`/`active`), unioned and deduplicated. `data-fw-tokens` is
+   * deliberately not scoped to "only what's visually active right now": a
+   * token a hover state depends on is a real dependency of this element even
+   * while it's resting, which is exactly what a "what would changing this
+   * token affect" tool (Impact Analysis) needs to see. `stateTokens` below
+   * exists alongside this, not instead of it, so a consumer can additionally
+   * tell *which* of these came from a state and which property/state it
+   * belongs to - see `primitives/internal/stateBridge.ts`.
+   */
   tokens?: string[];
-  /** Tokens used only by a recipe's interactive-state styling (see `primitives/internal/stateBridge.ts`), formatted as `state|property|token` - reported separately from `tokens` so `data-fw-tokens` can stay a plain "what does this element currently depend on" list while this stays traceable to exactly which state uses each one. */
+  /** Token usages declared by a recipe's interactive-state styling (see `primitives/internal/stateBridge.ts`), formatted as `state|property|token` - reported separately from `tokens` (which already includes these too, since the same token can legitimately also be used by the element's resting styling) so a consumer can tell exactly which state/property each state-declared usage belongs to. */
   stateTokens?: string[];
+  /**
+   * Declared interactive-state properties whose bridge is present but
+   * currently ineffective on this instance because `unsafeCss` sets the same
+   * rendered CSS property (see `Box.tsx`'s use of `STATE_BRIDGE_UNSAFE_CSS_KEYS`
+   * and `warnRecipeStateSuppressedByUnsafeCss`), formatted as
+   * `state|property|unsafeCssKey` - one entry per affected state. This is
+   * strictly additive to `stateTokens`: a suppressed declaration still
+   * appears there (the dependency is real; it's just not visually effective
+   * here), so a consumer can explain both facts at once.
+   */
+  stateSuppressed?: string[];
   /** Number of properties set via `unsafeCss` on this element, if any. */
   unsafeCssCount?: number;
 }
@@ -18,8 +54,10 @@ export interface DebugMeta {
  */
 export const PRIMITIVE_RESERVED_ATTRIBUTES = [
   "data-fw-primitive",
+  "data-fw-classes",
   "data-fw-tokens",
   "data-fw-state-tokens",
+  "data-fw-state-suppressed",
   "data-fw-unsafe-css",
 ] as const;
 
@@ -84,6 +122,9 @@ export function debugAttributes(
   const attrs: Record<string, string> = {
     "data-fw-primitive": meta.primitive,
   };
+  if (meta.classes && meta.classes.length > 0) {
+    attrs["data-fw-classes"] = meta.classes.join(" ");
+  }
   if (meta.tokens && meta.tokens.length > 0) {
     // Deduplicated: a resting value and one of its own interactive states
     // can legitimately reference the same token (e.g. `base.background` and
@@ -93,6 +134,9 @@ export function debugAttributes(
   }
   if (meta.stateTokens && meta.stateTokens.length > 0) {
     attrs["data-fw-state-tokens"] = meta.stateTokens.join(" ");
+  }
+  if (meta.stateSuppressed && meta.stateSuppressed.length > 0) {
+    attrs["data-fw-state-suppressed"] = meta.stateSuppressed.join(" ");
   }
   if (meta.unsafeCssCount) {
     attrs["data-fw-unsafe-css"] = String(meta.unsafeCssCount);

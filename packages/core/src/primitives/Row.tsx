@@ -99,7 +99,7 @@ export const Row = forwardRef(function Row(props: RowProps, ref: PolymorphicRef<
       className={cx(...classes, className)}
       style={finalStyle}
       {...rest}
-      {...debugAttributes({ primitive: "Row", tokens, unsafeCssCount }, rest, diagnostics)}
+      {...debugAttributes({ primitive: "Row", classes, tokens, unsafeCssCount }, rest, diagnostics)}
     >
       {children}
     </Component>

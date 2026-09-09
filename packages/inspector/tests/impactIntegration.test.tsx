@@ -327,3 +327,96 @@ describe("Impact Analysis integration", () => {
     );
   });
 });
+
+describe("Impact Analysis integration - interaction states (v0.4 Phase 2)", () => {
+  /** A single Button whose only usage of `colors.action` is a `hover.background` declaration - no ordinary/resting usage at all, so it never appears in the ordinary Tokens section. */
+  function mountStateOnlyButton(): { scope: HTMLElement; button: HTMLElement } {
+    const scope = document.createElement("div");
+    scope.style.setProperty("--fw-color-action", "#2563eb");
+
+    const button = document.createElement("button");
+    button.setAttribute("data-fw-primitive", "Box");
+    button.setAttribute("data-fw-recipe", "Button");
+    button.setAttribute("data-fw-tokens", "colors.action");
+    button.setAttribute("data-fw-state-tokens", "hover|background|colors.action");
+    button.style.setProperty("background-color", "var(--fw-state-hover-background, unset)");
+    button.style.setProperty("--fw-state-hover-background-value", "var(--fw-color-action)");
+
+    scope.appendChild(button);
+    document.body.appendChild(scope);
+    return { scope, button };
+  }
+
+  it("launches Impact Analysis from a state declaration's 'Analyze impact' action, showing the state token as directly affected", async () => {
+    const { button } = mountStateOnlyButton();
+    render(<SafeCssInspector />);
+    const shadowRoot = getShadowRoot();
+
+    await selectElement(shadowRoot, button);
+
+    const panel = shadowRoot.querySelector(".fw-inspector-panel");
+    expect(panel?.textContent).toContain("Interaction states");
+    expect(panel?.textContent).toContain("colors.action");
+
+    act(() => {
+      dispatchComposed(findButton(shadowRoot, "Analyze impact"), "click");
+    });
+
+    const impactPanel = shadowRoot.querySelector(".fw-inspector-panel");
+    expect(impactPanel?.textContent).toContain("Impact Analysis");
+    expect(impactPanel?.textContent).toContain("colors.action");
+    expect(impactPanel?.textContent).toMatch(/1\s*Rendered impact|Rendered impact.*1/s);
+  });
+
+  it("shows the state 'via' label in the collapsed Impact paths section", async () => {
+    const { button } = mountStateOnlyButton();
+    render(<SafeCssInspector />);
+    const shadowRoot = getShadowRoot();
+
+    await selectElement(shadowRoot, button);
+    act(() => {
+      dispatchComposed(findButton(shadowRoot, "Analyze impact"), "click");
+    });
+
+    const panel = shadowRoot.querySelector(".fw-inspector-panel");
+    expect(panel?.textContent).toContain("via hover · background");
+  });
+
+  it("shows the Interaction-only summary metric, counting an element affected exclusively through a state declaration", async () => {
+    const { button } = mountStateOnlyButton();
+    render(<SafeCssInspector />);
+    const shadowRoot = getShadowRoot();
+
+    await selectElement(shadowRoot, button);
+    act(() => {
+      dispatchComposed(findButton(shadowRoot, "Analyze impact"), "click");
+    });
+
+    const panel = shadowRoot.querySelector(".fw-inspector-panel");
+    expect(panel?.textContent).toContain("Interaction-only");
+    // The one affected element is affected exclusively through the hover
+    // declaration, so Interaction-only must read 1, matching Affected/Direct.
+    expect(panel?.textContent).toMatch(/Interaction-only\s*1/);
+  });
+
+  it("shows the suppression message in the Interaction States section when data-fw-state-suppressed marks a declaration ineffective", async () => {
+    const scope = document.createElement("div");
+    scope.style.setProperty("--fw-color-action", "#2563eb");
+    const button = document.createElement("button");
+    button.setAttribute("data-fw-primitive", "Box");
+    button.setAttribute("data-fw-recipe", "Button");
+    button.setAttribute("data-fw-tokens", "colors.action");
+    button.setAttribute("data-fw-state-tokens", "hover|background|colors.action");
+    button.setAttribute("data-fw-state-suppressed", "hover|background|backgroundColor");
+    button.style.setProperty("--fw-state-hover-background-value", "var(--fw-color-action)");
+    scope.appendChild(button);
+    document.body.appendChild(scope);
+
+    render(<SafeCssInspector />);
+    const shadowRoot = getShadowRoot();
+    await selectElement(shadowRoot, button);
+
+    const panel = shadowRoot.querySelector(".fw-inspector-panel");
+    expect(panel?.textContent).toContain("Suppressed by unsafeCss.backgroundColor");
+  });
+});

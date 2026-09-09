@@ -1,6 +1,6 @@
 import type { DependencyTreeNode, InspectedToken } from "../types";
 
-interface DependencyTreeProps {
+export interface DependencyTreeProps {
   nodes: DependencyTreeNode[];
   top?: boolean;
   onAnalyzeImpact?: (token: string) => void;
@@ -15,8 +15,12 @@ interface DependencyTreeProps {
  * `buildImpactTarget` resolves any `--fw-*` variable from the selected
  * element's DOM position regardless of whether that element's own
  * `data-fw-tokens` happens to list it.
+ *
+ * Exported (v0.4 Phase 2) so `InteractionStatesSection` can render a state
+ * declaration's own dependency tree with this exact same component, rather
+ * than a second, parallel tree renderer.
  */
-function DependencyTree({ nodes, top = false, onAnalyzeImpact }: DependencyTreeProps) {
+export function DependencyTree({ nodes, top = false, onAnalyzeImpact }: DependencyTreeProps) {
   if (nodes.length === 0) return null;
 
   return (

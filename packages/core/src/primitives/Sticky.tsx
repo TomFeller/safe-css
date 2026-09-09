@@ -52,6 +52,7 @@ export const Sticky = forwardRef(function Sticky(
 
   const style: CSSProperties = {};
   const tokens: string[] = [];
+  const classes = ["fw-Sticky"];
 
   const offsetVar = resolveToken("space", offset, "offset");
   if (edge === "top") {
@@ -74,10 +75,14 @@ export const Sticky = forwardRef(function Sticky(
   return (
     <Component
       ref={ref}
-      className={cx("fw-Sticky", className)}
+      className={cx(...classes, className)}
       style={finalStyle}
       {...rest}
-      {...debugAttributes({ primitive: "Sticky", tokens, unsafeCssCount }, rest, diagnostics)}
+      {...debugAttributes(
+        { primitive: "Sticky", classes, tokens, unsafeCssCount },
+        rest,
+        diagnostics,
+      )}
     >
       {children}
     </Component>

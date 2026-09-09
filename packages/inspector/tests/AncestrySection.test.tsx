@@ -13,6 +13,8 @@ function fixture(overrides: Partial<InspectedElement> = {}): InspectedElement {
     variants: [],
     ancestry: [],
     tokens: [],
+    interactionStates: [],
+    externalHooks: { frameworkClasses: [], externalClasses: [] },
     unsafeCss: { count: 0, detected: [], uncertain: false },
     ...overrides,
   };

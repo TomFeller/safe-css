@@ -6,8 +6,12 @@ import type { ImpactedElement, ImpactPath } from "./types";
  * `Card`s all reached via `colors.border -> border.subtle`) become one row
  * with a count, not 18 identical lines. A path's identity is its full
  * token chain plus its consumer label (recipe if the element has one,
- * otherwise primitive) plus its own kind - two paths with the same tokens
- * but different consumers are genuinely different rows.
+ * otherwise primitive) plus its own kind plus its `via` (v0.4 Phase 2) -
+ * two paths with the same tokens but a different `via` (or one with `via`
+ * and one without) are genuinely different explanations and must not
+ * collapse into one row: `colors.action` via `hover.background` and
+ * `colors.action` via `active.background` stay separate, and both stay
+ * separate from a plain (non-`via`) `colors.action` row.
  *
  * Iterates every element's *own* `paths` list, not just one representative
  * path - an element reached through two distinct dependency chains (e.g.
@@ -25,13 +29,24 @@ export function buildImpactPaths(affected: ImpactedElement[]): ImpactPath[] {
     const consumerLabel = el.recipe ?? el.primitive;
 
     for (const pathRef of el.paths) {
-      const key = JSON.stringify([pathRef.tokens, consumerLabel, pathRef.kind]);
+      const key = JSON.stringify([
+        pathRef.tokens,
+        consumerLabel,
+        pathRef.kind,
+        pathRef.via ?? null,
+      ]);
       const existing = byKey.get(key);
 
       if (existing) {
         existing.count += 1;
       } else {
-        byKey.set(key, { tokens: pathRef.tokens, kind: pathRef.kind, consumerLabel, count: 1 });
+        byKey.set(key, {
+          tokens: pathRef.tokens,
+          kind: pathRef.kind,
+          via: pathRef.via,
+          consumerLabel,
+          count: 1,
+        });
       }
     }
   }

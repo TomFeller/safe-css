@@ -7,7 +7,15 @@ import type { ImpactAnalysis } from "../impact/types";
  * counts. Kept as one component since these numbers are read together.
  */
 export function ImpactSummary({ analysis }: { analysis: ImpactAnalysis }) {
-  const { target, currentValue, affected, excludedByScope, recipes, primitives } = analysis;
+  const {
+    target,
+    currentValue,
+    affected,
+    excludedByScope,
+    recipes,
+    primitives,
+    interactionOnlyCount,
+  } = analysis;
   const direct = affected.filter((el) => el.kind === "direct").length;
   const indirect = affected.length - direct;
 
@@ -58,6 +66,10 @@ export function ImpactSummary({ analysis }: { analysis: ImpactAnalysis }) {
         <div>
           <span className="fw-inspector-row-label">Affected primitives</span>
           <span className="fw-inspector-code">{primitives.length}</span>
+        </div>
+        <div>
+          <span className="fw-inspector-row-label">Interaction-only</span>
+          <span className="fw-inspector-code">{interactionOnlyCount}</span>
         </div>
       </div>
 

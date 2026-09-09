@@ -505,6 +505,514 @@ describe("analyzeImpact - empty and malformed input", () => {
   });
 });
 
+describe("analyzeImpact - interaction states (v0.4 Phase 2)", () => {
+  describe("direct", () => {
+    it("a token used only by a hover declaration is direct-affected, with a via-tagged path and no plain path", () => {
+      const root = mount((scope) => {
+        scope.style.setProperty("--fw-color-action", "#2563eb");
+        box(scope, {
+          "data-fw-primitive": "Box",
+          "data-fw-recipe": "Button",
+          "data-fw-tokens": "colors.action",
+          "data-fw-state-tokens": "hover|background|colors.action",
+        });
+      });
+
+      const target = buildImpactTarget(root, "colors.action")!;
+      const result = analyzeImpact(target, root);
+
+      expect(result.affected).toHaveLength(1);
+      expect(result.affected[0]?.kind).toBe("direct");
+      expect(result.affected[0]?.paths).toEqual([
+        {
+          tokens: ["colors.action"],
+          kind: "direct",
+          via: { state: "hover", property: "background" },
+        },
+      ]);
+    });
+
+    it("a token used only by a focusVisible declaration is direct-affected", () => {
+      const root = mount((scope) => {
+        scope.style.setProperty("--fw-border-strong", "1px solid #9ca3af");
+        box(scope, {
+          "data-fw-primitive": "Box",
+          "data-fw-recipe": "Button",
+          "data-fw-tokens": "border.strong",
+          "data-fw-state-tokens": "focusVisible|border|border.strong",
+        });
+      });
+
+      const target = buildImpactTarget(root, "border.strong")!;
+      const result = analyzeImpact(target, root);
+
+      expect(result.affected).toHaveLength(1);
+      expect(result.affected[0]?.kind).toBe("direct");
+      expect(result.affected[0]?.paths).toEqual([
+        {
+          tokens: ["border.strong"],
+          kind: "direct",
+          via: { state: "focusVisible", property: "border" },
+        },
+      ]);
+    });
+
+    it("a token used by two different states on the same element produces one affected element with two distinct via-tagged paths", () => {
+      const root = mount((scope) => {
+        scope.style.setProperty("--fw-color-action", "#2563eb");
+        box(scope, {
+          "data-fw-primitive": "Box",
+          "data-fw-recipe": "Button",
+          "data-fw-tokens": "colors.action",
+          "data-fw-state-tokens": "hover|background|colors.action active|background|colors.action",
+        });
+      });
+
+      const target = buildImpactTarget(root, "colors.action")!;
+      const result = analyzeImpact(target, root);
+
+      expect(result.affected).toHaveLength(1);
+      expect(result.affected[0]?.kind).toBe("direct");
+      expect(result.affected[0]?.paths).toEqual(
+        expect.arrayContaining([
+          {
+            tokens: ["colors.action"],
+            kind: "direct",
+            via: { state: "hover", property: "background" },
+          },
+          {
+            tokens: ["colors.action"],
+            kind: "direct",
+            via: { state: "active", property: "background" },
+          },
+        ]),
+      );
+      expect(result.affected[0]?.paths).toHaveLength(2);
+    });
+
+    it("a token used both by resting styling and a hover declaration produces one affected element with both explanations", () => {
+      const root = mount((scope) => {
+        scope.style.setProperty("--fw-color-action", "#2563eb");
+        box(
+          scope,
+          {
+            "data-fw-primitive": "Box",
+            "data-fw-recipe": "Button",
+            "data-fw-tokens": "colors.action",
+            "data-fw-state-tokens": "hover|background|colors.action",
+          },
+          // Genuine resting usage on a *different* property (color) - not
+          // background, so this exercises real mixed usage rather than the
+          // rewritten var() fallback chain background-color would carry.
+          { color: "var(--fw-color-action)" },
+        );
+      });
+
+      const target = buildImpactTarget(root, "colors.action")!;
+      const result = analyzeImpact(target, root);
+
+      expect(result.affected).toHaveLength(1);
+      expect(result.affected[0]?.kind).toBe("direct");
+      expect(result.affected[0]?.paths).toEqual(
+        expect.arrayContaining([
+          { tokens: ["colors.action"], kind: "direct" },
+          {
+            tokens: ["colors.action"],
+            kind: "direct",
+            via: { state: "hover", property: "background" },
+          },
+        ]),
+      );
+      expect(result.affected[0]?.paths).toHaveLength(2);
+    });
+  });
+
+  describe("indirect", () => {
+    it("a state token that itself depends on the target is indirect-affected, with a via-tagged path", () => {
+      const root = mount((scope) => {
+        scope.style.setProperty("--fw-color-border", "#e5e7eb");
+        scope.style.setProperty("--fw-border-subtle", "1px solid var(--fw-color-border)");
+        box(scope, {
+          "data-fw-primitive": "Box",
+          "data-fw-recipe": "Button",
+          "data-fw-tokens": "border.subtle",
+          "data-fw-state-tokens": "focusVisible|border|border.subtle",
+        });
+      });
+
+      const target = buildImpactTarget(root, "colors.border")!;
+      const result = analyzeImpact(target, root);
+
+      expect(result.affected).toHaveLength(1);
+      expect(result.affected[0]?.kind).toBe("indirect");
+      expect(result.affected[0]?.paths).toEqual([
+        {
+          tokens: ["colors.border", "border.subtle"],
+          kind: "indirect",
+          via: { state: "focusVisible", property: "border" },
+        },
+      ]);
+    });
+
+    it("retains multiple indirect state paths when two different state declarations each depend on the target through different tokens", () => {
+      const root = mount((scope) => {
+        scope.style.setProperty("--fw-color-border", "#e5e7eb");
+        scope.style.setProperty("--fw-border-subtle", "1px solid var(--fw-color-border)");
+        scope.style.setProperty("--fw-border-strong", "2px solid var(--fw-color-border)");
+        box(scope, {
+          "data-fw-primitive": "Box",
+          "data-fw-recipe": "Button",
+          "data-fw-tokens": "border.subtle border.strong",
+          "data-fw-state-tokens": "hover|border|border.subtle focusVisible|border|border.strong",
+        });
+      });
+
+      const target = buildImpactTarget(root, "colors.border")!;
+      const result = analyzeImpact(target, root);
+
+      expect(result.affected).toHaveLength(1);
+      expect(result.affected[0]?.kind).toBe("indirect");
+      expect(result.affected[0]?.paths).toEqual(
+        expect.arrayContaining([
+          {
+            tokens: ["colors.border", "border.subtle"],
+            kind: "indirect",
+            via: { state: "hover", property: "border" },
+          },
+          {
+            tokens: ["colors.border", "border.strong"],
+            kind: "indirect",
+            via: { state: "focusVisible", property: "border" },
+          },
+        ]),
+      );
+      expect(result.affected[0]?.paths).toHaveLength(2);
+    });
+
+    it("retains both a resting indirect path and a state indirect path when the element uses different tokens for each, both depending on the target", () => {
+      const root = mount((scope) => {
+        scope.style.setProperty("--fw-color-border", "#e5e7eb");
+        scope.style.setProperty("--fw-border-subtle", "1px solid var(--fw-color-border)");
+        scope.style.setProperty("--fw-border-strong", "2px solid var(--fw-color-border)");
+        box(scope, {
+          "data-fw-primitive": "Box",
+          "data-fw-recipe": "Button",
+          // border.subtle: ordinary (resting) usage. border.strong: state-only.
+          "data-fw-tokens": "border.subtle border.strong",
+          "data-fw-state-tokens": "hover|border|border.strong",
+        });
+      });
+
+      const target = buildImpactTarget(root, "colors.border")!;
+      const result = analyzeImpact(target, root);
+
+      expect(result.affected).toHaveLength(1);
+      expect(result.affected[0]?.kind).toBe("indirect");
+      expect(result.affected[0]?.paths).toEqual(
+        expect.arrayContaining([
+          { tokens: ["colors.border", "border.subtle"], kind: "indirect" },
+          {
+            tokens: ["colors.border", "border.strong"],
+            kind: "indirect",
+            via: { state: "hover", property: "border" },
+          },
+        ]),
+      );
+      expect(result.affected[0]?.paths).toHaveLength(2);
+    });
+  });
+
+  describe("theme scope", () => {
+    it("excludes a state-declared token resolved from a different theme scope, exactly like an ordinary token", () => {
+      const root = mount((outer) => {
+        outer.style.setProperty("--fw-color-action", "#2563eb");
+        box(outer, {
+          "data-fw-primitive": "Box",
+          "data-fw-recipe": "Button",
+          "data-fw-tokens": "colors.action",
+          "data-fw-state-tokens": "hover|background|colors.action",
+        });
+
+        const inner = document.createElement("div");
+        inner.style.setProperty("--fw-color-action", "#1d4ed8");
+        outer.appendChild(inner);
+        box(inner, {
+          "data-fw-primitive": "Box",
+          "data-fw-recipe": "Button",
+          "data-fw-tokens": "colors.action",
+          "data-fw-state-tokens": "hover|background|colors.action",
+        });
+      });
+
+      const outerTarget = buildImpactTarget(root, "colors.action")!;
+      const result = analyzeImpact(outerTarget, root);
+
+      expect(result.affected).toHaveLength(1);
+      expect(result.excludedByScope).toHaveLength(1);
+      expect(result.excludedByScope[0]?.token).toBe("colors.action");
+    });
+
+    it("does not follow a state-declared token's dependency chain across a scope that overrides the intermediate token", () => {
+      const root = mount((outer) => {
+        outer.style.setProperty("--fw-color-border", "#e5e7eb");
+        outer.style.setProperty("--fw-border-subtle", "1px solid var(--fw-color-border)");
+        box(outer, {
+          "data-fw-primitive": "Box",
+          "data-fw-recipe": "Button",
+          "data-fw-tokens": "border.subtle",
+          "data-fw-state-tokens": "hover|border|border.subtle",
+        });
+
+        const inner = document.createElement("div");
+        inner.style.setProperty("--fw-border-subtle", "2px dashed black");
+        outer.appendChild(inner);
+        box(inner, {
+          "data-fw-primitive": "Box",
+          "data-fw-recipe": "Button",
+          "data-fw-tokens": "border.subtle",
+          "data-fw-state-tokens": "hover|border|border.subtle",
+        });
+      });
+
+      const target = buildImpactTarget(root, "colors.border")!;
+      const result = analyzeImpact(target, root);
+
+      expect(result.affected).toHaveLength(1);
+      expect(result.affected[0]?.paths).toEqual([
+        {
+          tokens: ["colors.border", "border.subtle"],
+          kind: "indirect",
+          via: { state: "hover", property: "border" },
+        },
+      ]);
+    });
+  });
+
+  describe("suppression", () => {
+    it("a suppressed state-only path does not count the element as affected", () => {
+      const root = mount((scope) => {
+        scope.style.setProperty("--fw-color-action", "#2563eb");
+        box(scope, {
+          "data-fw-primitive": "Box",
+          "data-fw-recipe": "Button",
+          "data-fw-tokens": "colors.action",
+          "data-fw-state-tokens": "hover|background|colors.action",
+          "data-fw-state-suppressed": "hover|background|backgroundColor",
+        });
+      });
+
+      const target = buildImpactTarget(root, "colors.action")!;
+      const result = analyzeImpact(target, root);
+
+      expect(result.affected).toEqual([]);
+    });
+
+    it("a suppressed state path plus a genuine ordinary path still counts the element as affected, through the ordinary route only", () => {
+      const root = mount((scope) => {
+        scope.style.setProperty("--fw-color-action", "#2563eb");
+        box(
+          scope,
+          {
+            "data-fw-primitive": "Box",
+            "data-fw-recipe": "Button",
+            "data-fw-tokens": "colors.action",
+            "data-fw-state-tokens": "hover|background|colors.action",
+            "data-fw-state-suppressed": "hover|background|backgroundColor",
+          },
+          { color: "var(--fw-color-action)" },
+        );
+      });
+
+      const target = buildImpactTarget(root, "colors.action")!;
+      const result = analyzeImpact(target, root);
+
+      expect(result.affected).toHaveLength(1);
+      expect(result.affected[0]?.paths).toEqual([{ tokens: ["colors.action"], kind: "direct" }]);
+    });
+
+    it("when one state is suppressed and another is not, only the non-suppressed state's path is retained", () => {
+      const root = mount((scope) => {
+        scope.style.setProperty("--fw-color-action", "#2563eb");
+        box(scope, {
+          "data-fw-primitive": "Box",
+          "data-fw-recipe": "Button",
+          "data-fw-tokens": "colors.action",
+          "data-fw-state-tokens": "hover|background|colors.action active|background|colors.action",
+          "data-fw-state-suppressed": "hover|background|backgroundColor",
+        });
+      });
+
+      const target = buildImpactTarget(root, "colors.action")!;
+      const result = analyzeImpact(target, root);
+
+      expect(result.affected).toHaveLength(1);
+      expect(result.affected[0]?.paths).toEqual([
+        {
+          tokens: ["colors.action"],
+          kind: "direct",
+          via: { state: "active", property: "background" },
+        },
+      ]);
+    });
+
+    it("a fully suppressed path never appears in the grouped Impact paths section", () => {
+      const root = mount((scope) => {
+        scope.style.setProperty("--fw-color-action", "#2563eb");
+        box(scope, {
+          "data-fw-primitive": "Box",
+          "data-fw-recipe": "Button",
+          "data-fw-tokens": "colors.action",
+          "data-fw-state-tokens": "hover|background|colors.action",
+          "data-fw-state-suppressed": "hover|background|backgroundColor",
+        });
+      });
+
+      const target = buildImpactTarget(root, "colors.action")!;
+      const result = analyzeImpact(target, root);
+
+      expect(result.paths).toEqual([]);
+    });
+  });
+
+  describe("interaction-only summary", () => {
+    it("counts an element as interaction-only when every one of its effective paths is via a state", () => {
+      const root = mount((scope) => {
+        scope.style.setProperty("--fw-color-action", "#2563eb");
+        box(scope, {
+          "data-fw-primitive": "Box",
+          "data-fw-recipe": "Button",
+          "data-fw-tokens": "colors.action",
+          "data-fw-state-tokens": "hover|background|colors.action",
+        });
+      });
+
+      const target = buildImpactTarget(root, "colors.action")!;
+      const result = analyzeImpact(target, root);
+
+      expect(result.affected).toHaveLength(1);
+      expect(result.interactionOnlyCount).toBe(1);
+    });
+
+    it("does not count a mixed current+state element as interaction-only", () => {
+      const root = mount((scope) => {
+        scope.style.setProperty("--fw-color-action", "#2563eb");
+        box(
+          scope,
+          {
+            "data-fw-primitive": "Box",
+            "data-fw-recipe": "Button",
+            "data-fw-tokens": "colors.action",
+            "data-fw-state-tokens": "hover|background|colors.action",
+          },
+          { color: "var(--fw-color-action)" },
+        );
+      });
+
+      const target = buildImpactTarget(root, "colors.action")!;
+      const result = analyzeImpact(target, root);
+
+      expect(result.affected).toHaveLength(1);
+      expect(result.interactionOnlyCount).toBe(0);
+    });
+
+    it("keeps interactionOnlyCount at 0 for an ordinary-only analysis (no interaction states involved at all)", () => {
+      const root = mount((scope) => {
+        scope.style.setProperty("--fw-radius-card", "12px");
+        box(scope, {
+          "data-fw-primitive": "Box",
+          "data-fw-recipe": "Card",
+          "data-fw-tokens": "radius.card",
+        });
+      });
+
+      const target = buildImpactTarget(root, "radius.card")!;
+      const result = analyzeImpact(target, root);
+
+      expect(result.affected).toHaveLength(1);
+      expect(result.interactionOnlyCount).toBe(0);
+    });
+  });
+
+  describe("grouping", () => {
+    it("the state qualifier participates in Impact-path grouping - hover and active paths for the same token do not collapse together", () => {
+      const root = mount((scope) => {
+        scope.style.setProperty("--fw-color-action", "#2563eb");
+        box(scope, {
+          "data-fw-primitive": "Box",
+          "data-fw-recipe": "Button",
+          "data-fw-tokens": "colors.action",
+          "data-fw-state-tokens": "hover|background|colors.action",
+        });
+        box(scope, {
+          "data-fw-primitive": "Box",
+          "data-fw-recipe": "Button",
+          "data-fw-tokens": "colors.action",
+          "data-fw-state-tokens": "active|background|colors.action",
+        });
+      });
+
+      const target = buildImpactTarget(root, "colors.action")!;
+      const result = analyzeImpact(target, root);
+
+      expect(result.affected).toHaveLength(2);
+      expect(result.paths).toEqual(
+        expect.arrayContaining([
+          {
+            tokens: ["colors.action"],
+            kind: "direct",
+            via: { state: "hover", property: "background" },
+            consumerLabel: "Button",
+            count: 1,
+          },
+          {
+            tokens: ["colors.action"],
+            kind: "direct",
+            via: { state: "active", property: "background" },
+            consumerLabel: "Button",
+            count: 1,
+          },
+        ]),
+      );
+      expect(result.paths).toHaveLength(2);
+    });
+
+    it("a plain path and a via path for the same token/consumer/kind remain two distinct rows, each with its own count", () => {
+      const root = mount((scope) => {
+        scope.style.setProperty("--fw-color-action", "#2563eb");
+        for (let i = 0; i < 2; i++) {
+          box(
+            scope,
+            {
+              "data-fw-primitive": "Box",
+              "data-fw-recipe": "Button",
+              "data-fw-tokens": "colors.action",
+              "data-fw-state-tokens": "hover|background|colors.action",
+            },
+            { color: "var(--fw-color-action)" },
+          );
+        }
+      });
+
+      const target = buildImpactTarget(root, "colors.action")!;
+      const result = analyzeImpact(target, root);
+
+      expect(result.paths).toEqual(
+        expect.arrayContaining([
+          { tokens: ["colors.action"], kind: "direct", consumerLabel: "Button", count: 2 },
+          {
+            tokens: ["colors.action"],
+            kind: "direct",
+            via: { state: "hover", property: "background" },
+            consumerLabel: "Button",
+            count: 2,
+          },
+        ]),
+      );
+      expect(result.paths).toHaveLength(2);
+    });
+  });
+});
+
 describe("buildImpactTarget", () => {
   it("returns null when no active definition can be found for the token", () => {
     const root = mount((scope) => {

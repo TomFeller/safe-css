@@ -326,6 +326,31 @@ export const INSPECTOR_STYLES = `
   color: #d9a441;
 }
 
+/* ---------- interaction states ---------- */
+
+.fw-inspector-state-group {
+  margin-bottom: 12px;
+}
+
+.fw-inspector-state-group:last-child {
+  margin-bottom: 0;
+}
+
+.fw-inspector-state-name {
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #4da3ff;
+}
+
+.fw-inspector-state-declaration {
+  margin-left: 4px;
+}
+
+.fw-inspector-state-suppressed {
+  color: #d9a441;
+}
+
 /* ---------- impact analysis ---------- */
 
 .fw-inspector-impact-note {
@@ -379,6 +404,12 @@ export const INSPECTOR_STYLES = `
 
 .fw-inspector-impact-breakdown {
   color: #9a9a9a;
+  font-size: 11px;
+}
+
+.fw-inspector-impact-path-via {
+  padding: 2px 0;
+  color: #4da3ff;
   font-size: 11px;
 }
 

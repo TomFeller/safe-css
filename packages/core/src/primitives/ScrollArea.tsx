@@ -62,12 +62,8 @@ export const ScrollArea = forwardRef(function ScrollArea(
   const Component = as || DEFAULT_TAG;
   const { diagnostics } = useTokenResolver("ScrollArea");
 
-  const classes = [
-    "fw-ScrollArea",
-    DIRECTION_CLASS[direction],
-    OVERSCROLL_CLASS[overscroll],
-    grow && "fw-grow",
-  ];
+  const classes = ["fw-ScrollArea", DIRECTION_CLASS[direction], OVERSCROLL_CLASS[overscroll]];
+  if (grow) classes.push("fw-grow");
 
   const { style: finalStyle, unsafeCssCount } = mergeUnsafeCss(
     {},
@@ -82,7 +78,7 @@ export const ScrollArea = forwardRef(function ScrollArea(
       className={cx(...classes, className)}
       style={finalStyle}
       {...rest}
-      {...debugAttributes({ primitive: "ScrollArea", unsafeCssCount }, rest, diagnostics)}
+      {...debugAttributes({ primitive: "ScrollArea", classes, unsafeCssCount }, rest, diagnostics)}
     >
       {children}
     </Component>

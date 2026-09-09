@@ -1,7 +1,7 @@
 {
   "name": "@safe-css/inspector",
   "version": "0.3.0",
-  "description": "A read-only, development-only DOM inspector for safe-css: understand why a rendered element looks the way it does, and what else currently rendered would be affected by changing it.",
+  "description": "Development-only DOM inspection tooling for safe-css: understand why a rendered element looks the way it does, and what else currently rendered would be affected by changing it. Inspection and Impact Analysis only — no editing interface.",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,

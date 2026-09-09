@@ -60,10 +60,14 @@
  * only on elements that already carry `.fw-Box`. Without it, a slot
  * activated by a `:hover`'d *ancestor* Box would inherit into a
  * non-hovered descendant Box, since custom properties inherit by default -
- * this reset re-asserts "unset" on every Box so only that element's own,
- * more specific pseudo-class rule below (which always wins on specificity)
- * can populate its own slot. Verified empirically against real nested
- * Boxes before this was adopted.
+ * this reset re-asserts `initial` on every Box (deliberately not `unset`:
+ * these bridge-slot custom properties are pure framework plumbing with no
+ * meaningful "inherited" value, unlike an actual CSS property such as
+ * `color` - see `primitives/internal/stateBridge.ts`'s `applyStateBridge`
+ * for that distinct case) so only that element's own, more specific
+ * pseudo-class rule below (which always wins on specificity) can populate
+ * its own slot. Verified empirically against real nested Boxes before this
+ * was adopted.
  *
  * `:not(:disabled)` is present here from day one, independent of whether a
  * recipe configures a `disabled` state (not supported until a later phase):
