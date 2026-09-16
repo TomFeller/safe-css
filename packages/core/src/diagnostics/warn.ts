@@ -165,8 +165,8 @@ export function warnRecipeVariantCollision(
 /**
  * The `data-fw-*` namespace is reserved for safe-css's own traceability
  * metadata (`data-fw-primitive`, `data-fw-recipe`, `data-fw-variant`,
- * `data-fw-tokens`, `data-fw-state-tokens`, `data-fw-state-suppressed`,
- * `data-fw-classes`, `data-fw-unsafe-css`). A
+ * `data-fw-tokens`, `data-fw-token-usages`, `data-fw-state-tokens`,
+ * `data-fw-state-suppressed`, `data-fw-classes`, `data-fw-unsafe-css`). A
  * consumer-supplied attribute in this namespace never wins - the
  * framework's own value is always applied last at each call site - so this
  * warns rather than silently accepting (and dropping) whatever the

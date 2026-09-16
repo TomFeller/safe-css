@@ -79,6 +79,12 @@ export interface UnsafeCssInfo {
 export type InteractionStateName = "hover" | "focusVisible" | "active";
 export type InteractionStateProperty = "background" | "color" | "border";
 
+/** One parsed `data-fw-token-usages` entry: `"space.card|padding"` -> `{ token: "space.card", property: "padding" }`. Explicit token -> rendered-CSS-property provenance Core records at the exact call site each token resolves a style value - see `inspection/metadata.ts`. */
+export interface InspectorTokenUsageRef {
+  token: string;
+  property: string;
+}
+
 /** One parsed `data-fw-state-tokens` entry: `"hover|background|colors.action"` -> `{ state: "hover", property: "background", token: "colors.action" }`. */
 export interface InspectorStateTokenRef {
   state: InteractionStateName;

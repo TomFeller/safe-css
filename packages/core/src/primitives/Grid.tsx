@@ -4,6 +4,7 @@ import { mergeUnsafeCss } from "../style/mergeUnsafeCss";
 import { useTokenResolver } from "../style/useResolvedToken";
 import { warnGridConflict } from "../diagnostics/warn";
 import { debugAttributes } from "./internal/debugAttributes";
+import { cssPropertyName } from "./internal/tokenUsage";
 import {
   DEFAULT_TAG,
   type PolymorphicComponent,
@@ -69,26 +70,31 @@ export const Grid = forwardRef(function Grid(props: GridProps, ref: PolymorphicR
   const classes: string[] = ["fw-Grid"];
   const style: CSSProperties = {};
   const tokens: string[] = [];
+  const tokenUsages: string[] = [];
 
   if (align !== undefined) classes.push(`fw-align-${align}`);
 
   if (gap !== undefined) {
     style.gap = resolveToken("space", gap, "gap");
     tokens.push(`space.${gap}`);
+    tokenUsages.push(`space.${gap}|${cssPropertyName("gap")}`);
   }
   if (rowGap !== undefined) {
     style.rowGap = resolveToken("space", rowGap, "rowGap");
     tokens.push(`space.${rowGap}`);
+    tokenUsages.push(`space.${rowGap}|${cssPropertyName("rowGap")}`);
   }
   if (columnGap !== undefined) {
     style.columnGap = resolveToken("space", columnGap, "columnGap");
     tokens.push(`space.${columnGap}`);
+    tokenUsages.push(`space.${columnGap}|${cssPropertyName("columnGap")}`);
   }
 
   if (minItemWidth !== undefined) {
     const sizeVar = resolveToken("size", minItemWidth, "minItemWidth");
     style.gridTemplateColumns = `repeat(auto-fit, minmax(min(${sizeVar}, 100%), 1fr))`;
     tokens.push(`size.${minItemWidth}`);
+    tokenUsages.push(`size.${minItemWidth}|${cssPropertyName("gridTemplateColumns")}`);
   } else if (columns !== undefined) {
     classes.push(`fw-grid-cols-${columns}`);
   }
@@ -107,7 +113,7 @@ export const Grid = forwardRef(function Grid(props: GridProps, ref: PolymorphicR
       style={finalStyle}
       {...rest}
       {...debugAttributes(
-        { primitive: "Grid", classes, tokens, unsafeCssCount },
+        { primitive: "Grid", classes, tokens, tokenUsages, unsafeCssCount },
         rest,
         diagnostics,
       )}

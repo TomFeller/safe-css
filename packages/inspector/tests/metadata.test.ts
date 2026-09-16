@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   describeElement,
+  hasTokenUsageMetadata,
   isInspectable,
   readClasses,
   readPrimitive,
@@ -8,6 +9,7 @@ import {
   readStateSuppressedList,
   readStateTokenList,
   readTokenList,
+  readTokenUsages,
   readUnsafeCssCount,
   readVariants,
   stateLabel,
@@ -71,6 +73,56 @@ describe("readTokenList", () => {
 
   it("returns an empty array when absent", () => {
     expect(readTokenList(el())).toEqual([]);
+  });
+});
+
+describe("readTokenUsages", () => {
+  it("parses Core's 'token|property' space-separated format", () => {
+    const element = el({
+      "data-fw-token-usages": "space.card|padding colors.surface|background-color",
+    });
+    expect(readTokenUsages(element)).toEqual([
+      { token: "space.card", property: "padding" },
+      { token: "colors.surface", property: "background-color" },
+    ]);
+  });
+
+  it("splits only on the first '|' delimiter, keeping the rest as the property", () => {
+    // A CSS property name can never actually contain "|" in practice, but
+    // the parser's contract is to never split past the first delimiter
+    // regardless - this proves it doesn't, rather than assuming it.
+    const element = el({ "data-fw-token-usages": "space.card|padding|extra" });
+    expect(readTokenUsages(element)).toEqual([{ token: "space.card", property: "padding|extra" }]);
+  });
+
+  it("returns an empty array when the attribute is absent or empty", () => {
+    expect(readTokenUsages(el())).toEqual([]);
+    expect(readTokenUsages(el({ "data-fw-token-usages": "" }))).toEqual([]);
+  });
+
+  it("safely ignores malformed entries instead of throwing", () => {
+    const cases = [
+      "space.card", // no delimiter at all
+      "|padding", // empty token before the delimiter
+      "space.card|", // empty property after the delimiter
+    ];
+    for (const entry of cases) {
+      const element = el({ "data-fw-token-usages": entry });
+      expect(() => readTokenUsages(element)).not.toThrow();
+      expect(readTokenUsages(element)).toEqual([]);
+    }
+  });
+
+  it("keeps well-formed entries even when mixed with malformed ones, in DOM order", () => {
+    const element = el({ "data-fw-token-usages": "garbage space.card|padding also-garbage|" });
+    expect(readTokenUsages(element)).toEqual([{ token: "space.card", property: "padding" }]);
+  });
+});
+
+describe("hasTokenUsageMetadata", () => {
+  it("is true only when data-fw-token-usages is present, regardless of its content", () => {
+    expect(hasTokenUsageMetadata(el({ "data-fw-token-usages": "space.card|padding" }))).toBe(true);
+    expect(hasTokenUsageMetadata(el())).toBe(false);
   });
 });
 

@@ -1013,6 +1013,180 @@ describe("analyzeImpact - interaction states (v0.4 Phase 2)", () => {
   });
 });
 
+describe("analyzeImpact - ordinary/state disambiguation prefers data-fw-token-usages (regression)", () => {
+  // Root cause this guards against: hasOrdinaryUsage() used to re-derive
+  // "does this element genuinely use the token ordinarily" by scanning
+  // element.style for var(--fw-...) references - the same CSSOM
+  // reverse-engineering that was unreliable for shorthand properties
+  // (border, padding, ...) in a real browser and caused the Tokens
+  // section's "Used by: Unknown" bug. It now shares
+  // inspection/tokenUsages.ts's resolveTokenUsageProperties with the
+  // Element Inspector, so data-fw-token-usages is authoritative here too.
+  //
+  // None of these fixtures set an inline `border` value that a CSSOM scan
+  // could find - the ordinary classification below can only come from
+  // data-fw-token-usages. Run against the pre-fix code (hasOrdinaryUsage
+  // calling findPropertiesUsingVariable directly), scenario A and C would
+  // wrongly report interactionOnlyCount > 0.
+
+  it("A: direct mixed shorthand usage - base.border and states.focusVisible.border on the same token produce one affected element with both a direct ordinary path and a direct focusVisible·border path", () => {
+    const root = mount((scope) => {
+      scope.style.setProperty("--fw-color-border", "#e5e7eb");
+      scope.style.setProperty("--fw-border-subtle", "1px solid var(--fw-color-border)");
+      box(scope, {
+        "data-fw-primitive": "Box",
+        "data-fw-recipe": "Button",
+        "data-fw-tokens": "border.subtle",
+        "data-fw-token-usages": "border.subtle|border",
+        "data-fw-state-tokens": "focusVisible|border|border.subtle",
+      });
+    });
+
+    const target = buildImpactTarget(root, "border.subtle")!;
+    const result = analyzeImpact(target, root);
+
+    expect(result.affected).toHaveLength(1);
+    expect(result.affected[0]?.kind).toBe("direct");
+    expect(result.affected[0]?.paths).toEqual(
+      expect.arrayContaining([
+        { tokens: ["border.subtle"], kind: "direct" },
+        {
+          tokens: ["border.subtle"],
+          kind: "direct",
+          via: { state: "focusVisible", property: "border" },
+        },
+      ]),
+    );
+    expect(result.affected[0]?.paths).toHaveLength(2);
+    expect(result.interactionOnlyCount).toBe(0);
+  });
+
+  it("B: direct state-only usage - focusVisible.border with no resting border is interaction-only", () => {
+    const root = mount((scope) => {
+      scope.style.setProperty("--fw-color-border", "#e5e7eb");
+      scope.style.setProperty("--fw-border-subtle", "1px solid var(--fw-color-border)");
+      box(scope, {
+        "data-fw-primitive": "Box",
+        "data-fw-recipe": "Button",
+        "data-fw-tokens": "border.subtle",
+        // No data-fw-token-usages entry - Core never emits one for a
+        // token whose only usage is a declared interactive state.
+        "data-fw-state-tokens": "focusVisible|border|border.subtle",
+      });
+    });
+
+    const target = buildImpactTarget(root, "border.subtle")!;
+    const result = analyzeImpact(target, root);
+
+    expect(result.affected).toHaveLength(1);
+    expect(result.affected[0]?.paths).toEqual([
+      {
+        tokens: ["border.subtle"],
+        kind: "direct",
+        via: { state: "focusVisible", property: "border" },
+      },
+    ]);
+    expect(result.interactionOnlyCount).toBe(1);
+  });
+
+  it("C: per-token lookup correctness - one element with two border-category tokens, one mixed (ordinary+state) and one state-only, are each classified independently from the same data-fw-token-usages/data-fw-state-tokens pair", () => {
+    const root = mount((scope) => {
+      scope.style.setProperty("--fw-color-border", "#e5e7eb");
+      scope.style.setProperty("--fw-border-subtle", "1px solid var(--fw-color-border)");
+      scope.style.setProperty("--fw-border-strong", "2px solid var(--fw-color-border)");
+      box(scope, {
+        "data-fw-primitive": "Box",
+        "data-fw-recipe": "Button",
+        "data-fw-tokens": "border.subtle border.strong",
+        // Only border.subtle has genuine ordinary usage; border.strong is
+        // declared solely by hover and correctly has no entry here.
+        "data-fw-token-usages": "border.subtle|border",
+        "data-fw-state-tokens": "focusVisible|border|border.subtle hover|border|border.strong",
+      });
+    });
+
+    const subtleTarget = buildImpactTarget(root, "border.subtle")!;
+    const subtleResult = analyzeImpact(subtleTarget, root);
+    expect(subtleResult.affected[0]?.paths).toEqual(
+      expect.arrayContaining([
+        { tokens: ["border.subtle"], kind: "direct" },
+        {
+          tokens: ["border.subtle"],
+          kind: "direct",
+          via: { state: "focusVisible", property: "border" },
+        },
+      ]),
+    );
+    expect(subtleResult.interactionOnlyCount).toBe(0);
+
+    const strongTarget = buildImpactTarget(root, "border.strong")!;
+    const strongResult = analyzeImpact(strongTarget, root);
+    expect(strongResult.affected[0]?.paths).toEqual([
+      { tokens: ["border.strong"], kind: "direct", via: { state: "hover", property: "border" } },
+    ]);
+    expect(strongResult.interactionOnlyCount).toBe(1);
+  });
+
+  it("D: suppression - the ordinary border path survives when the same token's focusVisible declaration is suppressed by unsafeCss", () => {
+    const root = mount((scope) => {
+      scope.style.setProperty("--fw-color-border", "#e5e7eb");
+      scope.style.setProperty("--fw-border-subtle", "1px solid var(--fw-color-border)");
+      box(scope, {
+        "data-fw-primitive": "Box",
+        "data-fw-recipe": "Button",
+        "data-fw-tokens": "border.subtle",
+        "data-fw-token-usages": "border.subtle|border",
+        "data-fw-state-tokens": "focusVisible|border|border.subtle",
+        "data-fw-state-suppressed": "focusVisible|border|border",
+      });
+    });
+
+    const target = buildImpactTarget(root, "border.subtle")!;
+    const result = analyzeImpact(target, root);
+
+    expect(result.affected).toHaveLength(1);
+    expect(result.affected[0]?.kind).toBe("direct");
+    expect(result.affected[0]?.paths).toEqual([{ tokens: ["border.subtle"], kind: "direct" }]);
+    expect(result.interactionOnlyCount).toBe(0);
+  });
+
+  it("E: legacy fallback - an element without data-fw-token-usages still resolves ordinary usage via the element.style scan", () => {
+    const root = mount((scope) => {
+      scope.style.setProperty("--fw-color-action", "#2563eb");
+      box(
+        scope,
+        {
+          "data-fw-primitive": "Box",
+          "data-fw-recipe": "Button",
+          "data-fw-tokens": "colors.action",
+          "data-fw-state-tokens": "hover|background|colors.action",
+          // No data-fw-token-usages at all - simulates an older Core build
+          // predating this attribute.
+        },
+        { color: "var(--fw-color-action)" }, // genuine ordinary usage via a non-shorthand property
+      );
+    });
+
+    const target = buildImpactTarget(root, "colors.action")!;
+    const result = analyzeImpact(target, root);
+
+    expect(result.affected).toHaveLength(1);
+    expect(result.affected[0]?.kind).toBe("direct");
+    expect(result.affected[0]?.paths).toEqual(
+      expect.arrayContaining([
+        { tokens: ["colors.action"], kind: "direct" },
+        {
+          tokens: ["colors.action"],
+          kind: "direct",
+          via: { state: "hover", property: "background" },
+        },
+      ]),
+    );
+    expect(result.affected[0]?.paths).toHaveLength(2);
+    expect(result.interactionOnlyCount).toBe(0);
+  });
+});
+
 describe("buildImpactTarget", () => {
   it("returns null when no active definition can be found for the token", () => {
     const root = mount((scope) => {

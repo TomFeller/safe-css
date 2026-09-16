@@ -1,6 +1,7 @@
 import type {
   InspectorStateSuppressionRef,
   InspectorStateTokenRef,
+  InspectorTokenUsageRef,
   InspectorVariant,
   InteractionStateName,
   InteractionStateProperty,
@@ -9,17 +10,17 @@ import type {
 /**
  * The entire Core communication contract this package relies on:
  * `data-fw-primitive` / `data-fw-recipe` / `data-fw-variant` / `data-fw-tokens`
- * / `data-fw-state-tokens` / `data-fw-state-suppressed` / `data-fw-classes`
- * / `data-fw-unsafe-css` attributes, and `--fw-*` CSS custom properties
- * (handled in `../tokens/tokenVariable.ts`), including the interactive-state
- * bridge's inline `--fw-state-<state>-<property>-value` custom properties
- * (v0.4 Phase 2 - read directly via `element.style`, not through a named
+ * / `data-fw-token-usages` / `data-fw-state-tokens` / `data-fw-state-suppressed`
+ * / `data-fw-classes` / `data-fw-unsafe-css` attributes, and `--fw-*` CSS
+ * custom properties (handled in `../tokens/tokenVariable.ts`), including the
+ * interactive-state bridge's inline `--fw-state-<state>-<property>-value`
+ * custom properties (read directly via `element.style`, not through a named
  * constant here, since their names are generated per state/property rather
  * than fixed). No React context, no imports from `@safe-css/core`'s
  * implementation - see docs/architecture.md#inspector.
  *
- * v0.4 Phase 3's "External Hooks" model additionally reads the selected
- * element's own `classList`/`id` directly (see `inspection/inspectElement.ts`'s
+ * The "External Hooks" model additionally reads the selected element's own
+ * `classList`/`id` directly (see `inspection/inspectElement.ts`'s
  * `buildExternalHooks`) - still just the live DOM element itself, not
  * anything heuristic or Context-coupled, but worth noting as a kind of input
  * beyond `data-fw-*` attributes/`--fw-*` custom properties: `data-fw-classes`
@@ -30,6 +31,7 @@ export const PRIMITIVE_ATTRIBUTE = "data-fw-primitive";
 export const RECIPE_ATTRIBUTE = "data-fw-recipe";
 export const VARIANT_ATTRIBUTE = "data-fw-variant";
 export const TOKENS_ATTRIBUTE = "data-fw-tokens";
+export const TOKEN_USAGES_ATTRIBUTE = "data-fw-token-usages";
 export const STATE_TOKENS_ATTRIBUTE = "data-fw-state-tokens";
 export const STATE_SUPPRESSED_ATTRIBUTE = "data-fw-state-suppressed";
 export const CLASSES_ATTRIBUTE = "data-fw-classes";
@@ -112,6 +114,52 @@ export function readTokenList(element: Element): string[] {
   const raw = element.getAttribute(TOKENS_ATTRIBUTE);
   if (!raw) return [];
   return raw.split(/\s+/).filter(Boolean);
+}
+
+/**
+ * Splits one `data-fw-token-usages` entry on only its first `|` - Core's
+ * documented format is `token|property`, where `property` (a rendered CSS
+ * property name, e.g. `"padding-inline"`) is never itself split further even
+ * if it happened to contain a `|`. Returns `null` for an entry missing the
+ * delimiter, or whose token/property segment is empty - malformed entries
+ * are always ignored safely, never thrown on.
+ */
+function parseTokenUsageEntry(entry: string): [string, string] | null {
+  const separator = entry.indexOf("|");
+  if (separator === -1) return null;
+
+  const token = entry.slice(0, separator);
+  const property = entry.slice(separator + 1);
+  if (token.length === 0 || property.length === 0) return null;
+
+  return [token, property];
+}
+
+/** Whether Core emitted explicit token->property provenance for this element at all. When `true`, this metadata is authoritative for ordinary/resting token attribution; when `false` (an older Core build that predates `data-fw-token-usages`), callers fall back to the legacy `element.style` reverse scan - see `inspection/inspectElement.ts`. */
+export function hasTokenUsageMetadata(element: Element): boolean {
+  return element.hasAttribute(TOKEN_USAGES_ATTRIBUTE);
+}
+
+/**
+ * Parses Core's space-separated `data-fw-token-usages` list, e.g.
+ * `"space.card|padding colors.surface|background-color"`, into structured
+ * refs, preserving DOM order. Each entry is split on only its first `|` (see
+ * {@link parseTokenUsageEntry}); a malformed entry is silently skipped
+ * rather than thrown on, since this is external, framework-authored but
+ * still untrusted-at-the-type-level DOM text.
+ */
+export function readTokenUsages(element: Element): InspectorTokenUsageRef[] {
+  const raw = element.getAttribute(TOKEN_USAGES_ATTRIBUTE);
+  if (!raw) return [];
+
+  const refs: InspectorTokenUsageRef[] = [];
+  for (const entry of raw.split(/\s+/).filter(Boolean)) {
+    const parsed = parseTokenUsageEntry(entry);
+    if (!parsed) continue;
+    const [token, property] = parsed;
+    refs.push({ token, property });
+  }
+  return refs;
 }
 
 /** Parses Core's space-separated `data-fw-classes` list - the exact CSS classes a primitive itself generated for this element, never the consumer's own `className`. */

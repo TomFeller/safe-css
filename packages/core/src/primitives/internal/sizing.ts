@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import type { SizeToken } from "../../theme/types";
+import { cssPropertyName } from "./tokenUsage";
 
 export type BoxDimension = "full" | "fit" | SizeToken;
 
@@ -7,6 +8,7 @@ export interface SizeResolutionContext {
   classes: string[];
   style: CSSProperties;
   tokens: string[];
+  tokenUsages: string[];
   resolveToken: (
     category: "size",
     token: string | undefined,
@@ -41,6 +43,7 @@ export function applyDimension(
 
   ctx.style[dimension] = ctx.resolveToken("size", value, dimension);
   ctx.tokens.push(`size.${value}`);
+  ctx.tokenUsages.push(`size.${value}|${cssPropertyName(dimension)}`);
 }
 
 /** Shared resolution for Box's min/max width/height, which are always SizeToken (no `full`/`fit`). */
@@ -52,4 +55,5 @@ export function applyBoundDimension(
   if (value === undefined) return;
   ctx.style[prop] = ctx.resolveToken("size", value, prop);
   ctx.tokens.push(`size.${value}`);
+  ctx.tokenUsages.push(`size.${value}|${cssPropertyName(prop)}`);
 }

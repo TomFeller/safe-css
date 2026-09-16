@@ -2,7 +2,11 @@ import { findNearestVariableDefinition } from "../tokens/tokenValue";
 import { parseTokenIdentity } from "../tokens/parseToken";
 import { tokenToCssVariable } from "../tokens/tokenVariable";
 import { readStateSuppressedList, readStateTokenList } from "../inspection/metadata";
-import { findPropertiesUsingVariable } from "../inspection/inspectElement";
+import {
+  buildTokenUsageLookup,
+  hasOrdinaryTokenUsage,
+  type TokenUsageLookup,
+} from "../inspection/tokenUsages";
 import { scanRenderedElements } from "./scanRenderedElements";
 import { buildOwnedDependencyTree, searchForTarget, treeHasCycle } from "./reverseDependencies";
 import { groupByPrimitive, groupByRecipe } from "./groupImpact";
@@ -49,23 +53,31 @@ function effectiveViaRefs(
  * A token never declared by any state on this element (`refsByToken` has no
  * entry for it) is unambiguously ordinary - `data-fw-tokens` is Core's own
  * authoritative dependency list, so this is trusted directly without also
- * requiring `findPropertiesUsingVariable` to independently re-derive the
- * same fact via inline-style scanning. That extra check is only needed to
+ * requiring the extra check below. That extra check is only needed to
  * disambiguate the genuinely ambiguous case: a token that *is*
  * state-declared here might be exclusively state-only (its only reason for
  * appearing in `data-fw-tokens` at all is the state declaration) or
- * genuinely mixed (also used by the element's own resting styling) - the
- * same disambiguation the Element Inspector's ordinary Tokens section makes
- * (see `inspection/inspectElement.ts`).
+ * genuinely mixed (also used by the element's own resting styling) - and
+ * when it IS necessary, `hasOrdinaryTokenUsage` (`inspection/tokenUsages.ts`)
+ * is the exact same explicit-metadata-first, CSSOM-fallback check the
+ * Element Inspector's ordinary Tokens section uses, so the two can never
+ * disagree about what counts as ordinary usage. Reverse-scanning
+ * `element.style` directly here (the pre-`data-fw-token-usages` approach)
+ * reintroduced the shorthand-property unreliability (`border`, `padding`,
+ * ...) the Tokens section fix eliminated - a token that's both
+ * `base.border` and `states.focusVisible.border` could be misclassified as
+ * interaction-only in a real browser even though it has genuine resting
+ * usage too.
  */
 function hasOrdinaryUsage(
   element: HTMLElement,
   cssVariable: string,
   refsByToken: Map<string, InspectorStateTokenRef[]>,
   token: string,
+  tokenUsageLookup: TokenUsageLookup,
 ): boolean {
   if (!refsByToken.has(token)) return true;
-  return findPropertiesUsingVariable(element, cssVariable).length > 0;
+  return hasOrdinaryTokenUsage(element, token, cssVariable, tokenUsageLookup);
 }
 
 /**
@@ -87,10 +99,10 @@ function hasOrdinaryUsage(
  * what's found: tagging which paths run through a `states.hover`/
  * `focusVisible`/`active` declaration (`via`, resolved per-candidate from
  * `data-fw-state-tokens`) versus the element's ordinary/resting styling
- * (`findPropertiesUsingVariable`, the same "does this element's own inline
- * style genuinely reference this variable" check the Element Inspector's
- * Tokens section uses - see `inspection/inspectElement.ts`), and excluding
- * a path entirely when Core's `data-fw-state-suppressed` marks it
+ * (`hasOrdinaryTokenUsage`, the same explicit-metadata-first check the
+ * Element Inspector's Tokens section uses - see
+ * `inspection/tokenUsages.ts`), and excluding a path entirely when Core's
+ * `data-fw-state-suppressed` marks it
  * ineffective on this instance (`effectiveViaRefs` above). A token used
  * both ways on the same element produces both an ordinary and a `via`
  * path, and the element still appears exactly once in `affected`.
@@ -121,6 +133,10 @@ export function analyzeImpact(target: ImpactTarget, root: ParentNode = document)
     const suppressedStateKeys = new Set(
       readStateSuppressedList(candidate.element).map((ref) => `${ref.state}|${ref.property}`),
     );
+    // Built once per candidate (not per token): both the target-token check
+    // below and the per-otherToken loop further down resolve ordinary usage
+    // against this same element.
+    const tokenUsageLookup = buildTokenUsageLookup(candidate.element);
 
     if (candidate.tokens.includes(target.token.token)) {
       const definition = findNearestVariableDefinition(candidate.element, target.cssVariable);
@@ -134,6 +150,7 @@ export function analyzeImpact(target: ImpactTarget, root: ParentNode = document)
             target.cssVariable,
             stateRefsByToken,
             target.token.token,
+            tokenUsageLookup,
           )
         ) {
           directPaths.push({ tokens: [target.token.token], kind: "direct" });
@@ -186,6 +203,7 @@ export function analyzeImpact(target: ImpactTarget, root: ParentNode = document)
           cssVariable,
           stateRefsByToken,
           otherToken,
+          tokenUsageLookup,
         );
         const viaRefs = effectiveViaRefs(stateRefsByToken, suppressedStateKeys, otherToken);
 

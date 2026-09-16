@@ -147,6 +147,138 @@ describe("inspectElement", () => {
   });
 });
 
+describe("inspectElement: data-fw-token-usages (explicit provenance)", () => {
+  it("prefers explicit data-fw-token-usages over the element.style reverse scan, even when the scan would have found something else", () => {
+    container = document.createElement("div");
+    container.style.setProperty("--fw-space-card", "16px");
+    container.setAttribute("data-fw-primitive", "Box");
+    container.setAttribute("data-fw-tokens", "space.card");
+    container.setAttribute("data-fw-token-usages", "space.card|padding");
+    // Deliberately a different, wrong property in the actual inline style -
+    // if the scan were still consulted, it would find this instead.
+    container.style.setProperty("margin", "var(--fw-space-card)");
+    document.body.appendChild(container);
+
+    const inspected = inspectElement(container);
+    expect(inspected.tokens[0]?.properties).toEqual(["padding"]);
+  });
+
+  it("space.card reports padding, radius.card reports border-radius, border.subtle reports border, colors.surface reports background-color", () => {
+    container = document.createElement("div");
+    container.style.setProperty("--fw-color-border", "#333333");
+    container.style.setProperty("--fw-border-subtle", "1px solid var(--fw-color-border)");
+    container.style.setProperty("--fw-space-card", "16px");
+    container.style.setProperty("--fw-radius-card", "12px");
+    container.style.setProperty("--fw-color-surface", "#ffffff");
+    container.setAttribute("data-fw-primitive", "Box");
+    container.setAttribute("data-fw-tokens", "space.card radius.card border.subtle colors.surface");
+    container.setAttribute(
+      "data-fw-token-usages",
+      "space.card|padding radius.card|border-radius border.subtle|border colors.surface|background-color",
+    );
+    document.body.appendChild(container);
+
+    const inspected = inspectElement(container);
+    const byToken = new Map(inspected.tokens.map((t) => [t.token, t.properties]));
+    expect(byToken.get("space.card")).toEqual(["padding"]);
+    expect(byToken.get("radius.card")).toEqual(["border-radius"]);
+    expect(byToken.get("border.subtle")).toEqual(["border"]);
+    expect(byToken.get("colors.surface")).toEqual(["background-color"]);
+  });
+
+  it("preserves multiple properties for the same token", () => {
+    container = document.createElement("div");
+    container.style.setProperty("--fw-color-action", "#2563eb");
+    container.setAttribute("data-fw-primitive", "Box");
+    container.setAttribute("data-fw-tokens", "colors.action");
+    container.setAttribute(
+      "data-fw-token-usages",
+      "colors.action|color colors.action|border-color",
+    );
+    document.body.appendChild(container);
+
+    const inspected = inspectElement(container);
+    expect(inspected.tokens[0]?.properties).toEqual(["color", "border-color"]);
+  });
+
+  it("falls back to the element.style reverse scan when data-fw-token-usages is absent (an older Core build)", () => {
+    container = document.createElement("div");
+    container.style.setProperty("--fw-space-card", "16px");
+    container.setAttribute("data-fw-primitive", "Box");
+    container.setAttribute("data-fw-tokens", "space.card");
+    // No data-fw-token-usages at all.
+    container.style.setProperty("padding", "var(--fw-space-card)");
+    document.body.appendChild(container);
+
+    const inspected = inspectElement(container);
+    expect(inspected.tokens[0]?.properties).toEqual(["padding"]);
+  });
+
+  it("trusts explicit metadata even when it says a token has zero ordinary properties, rather than falling back to the scan", () => {
+    container = document.createElement("div");
+    container.style.setProperty("--fw-space-card", "16px");
+    container.setAttribute("data-fw-primitive", "Box");
+    container.setAttribute("data-fw-tokens", "space.card");
+    // The attribute is present (modern Core), but lists no usage for this
+    // token - a real scan would still find "padding" below, but the
+    // explicit metadata must win and report "Unknown" instead.
+    container.setAttribute("data-fw-token-usages", "");
+    container.style.setProperty("padding", "var(--fw-space-card)");
+    document.body.appendChild(container);
+
+    const inspected = inspectElement(container);
+    expect(inspected.tokens[0]?.properties).toEqual([]);
+  });
+
+  it("a state bridge property is never reported via data-fw-token-usages either - mixed ordinary + state usage stays correct", () => {
+    container = document.createElement("div");
+    container.style.setProperty("--fw-color-action", "#2563eb");
+    container.setAttribute("data-fw-primitive", "Box");
+    container.setAttribute("data-fw-tokens", "colors.action");
+    container.setAttribute("data-fw-token-usages", "colors.action|background-color");
+    container.setAttribute("data-fw-state-tokens", "hover|color|colors.action");
+    container.style.setProperty("background-color", "var(--fw-color-action)");
+    container.style.setProperty("color", "var(--fw-state-hover-color, unset)");
+    container.style.setProperty("--fw-state-hover-color-value", "var(--fw-color-action)");
+    document.body.appendChild(container);
+
+    const inspected = inspectElement(container);
+
+    const ordinary = inspected.tokens.find((t) => t.token === "colors.action")!;
+    expect(ordinary.properties).toEqual(["background-color"]);
+
+    expect(inspected.interactionStates[0]?.state).toBe("hover");
+    expect(inspected.interactionStates[0]?.declarations[0]?.property).toBe("color");
+    expect(inspected.interactionStates[0]?.declarations[0]?.token?.token).toBe("colors.action");
+  });
+
+  it("a state-only token (no entry in data-fw-token-usages) is still correctly excluded from the ordinary Tokens list", () => {
+    container = document.createElement("div");
+    container.style.setProperty("--fw-color-surfaceRaised", "#f8fafc");
+    container.setAttribute("data-fw-primitive", "Box");
+    container.setAttribute("data-fw-tokens", "colors.surfaceRaised");
+    // No ordinary usage recorded - matches Core's real behavior for a
+    // state-only token.
+    container.setAttribute("data-fw-state-tokens", "hover|background|colors.surfaceRaised");
+    container.style.setProperty(
+      "background-color",
+      "var(--fw-state-hover-background, var(--fw-color-action))",
+    );
+    container.style.setProperty(
+      "--fw-state-hover-background-value",
+      "var(--fw-color-surfaceRaised)",
+    );
+    document.body.appendChild(container);
+
+    const inspected = inspectElement(container);
+
+    expect(inspected.tokens.find((t) => t.token === "colors.surfaceRaised")).toBeUndefined();
+    expect(inspected.interactionStates[0]?.declarations[0]?.token?.token).toBe(
+      "colors.surfaceRaised",
+    );
+  });
+});
+
 describe("inspectElement: interaction states", () => {
   it("builds a token-backed hover.background declaration", () => {
     container = document.createElement("div");

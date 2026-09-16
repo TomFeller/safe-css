@@ -4,6 +4,7 @@ import { mergeUnsafeCss } from "../style/mergeUnsafeCss";
 import { useTokenResolver } from "../style/useResolvedToken";
 import { debugAttributes } from "./internal/debugAttributes";
 import { applyDimension, type BoxDimension } from "./internal/sizing";
+import { cssPropertyName } from "./internal/tokenUsage";
 import {
   DEFAULT_TAG,
   type PolymorphicComponent,
@@ -75,13 +76,15 @@ export const Row = forwardRef(function Row(props: RowProps, ref: PolymorphicRef<
   ];
   const style: CSSProperties = {};
   const tokens: string[] = [];
+  const tokenUsages: string[] = [];
 
   if (gap !== undefined) {
     style.gap = resolveToken("space", gap, "gap");
     tokens.push(`space.${gap}`);
+    tokenUsages.push(`space.${gap}|${cssPropertyName("gap")}`);
   }
 
-  const sizeCtx = { classes, style, tokens, resolveToken };
+  const sizeCtx = { classes, style, tokens, tokenUsages, resolveToken };
   applyDimension(sizeCtx, "width", width);
 
   if (grow) classes.push("fw-grow");
@@ -99,7 +102,11 @@ export const Row = forwardRef(function Row(props: RowProps, ref: PolymorphicRef<
       className={cx(...classes, className)}
       style={finalStyle}
       {...rest}
-      {...debugAttributes({ primitive: "Row", classes, tokens, unsafeCssCount }, rest, diagnostics)}
+      {...debugAttributes(
+        { primitive: "Row", classes, tokens, tokenUsages, unsafeCssCount },
+        rest,
+        diagnostics,
+      )}
     >
       {children}
     </Component>

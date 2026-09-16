@@ -6,6 +6,7 @@ import { isDevelopmentBuild } from "../diagnostics/env";
 import { warnRecipeStateSuppressedByUnsafeCss } from "../diagnostics/warn";
 import { debugAttributes } from "./internal/debugAttributes";
 import { applyBoundDimension, applyDimension, type BoxDimension } from "./internal/sizing";
+import { cssPropertyName } from "./internal/tokenUsage";
 import {
   applyStateBridge,
   RECIPE_STATE_BRIDGE,
@@ -102,6 +103,7 @@ export const Box = forwardRef(function Box(props: BoxProps, ref: PolymorphicRef<
   const classes: string[] = ["fw-Box"];
   const style: CSSProperties = {};
   const tokens: string[] = [];
+  const tokenUsages: string[] = [];
   const stateTokens: string[] = [];
   const bridgeCtx: StateBridgeContext = {
     style: style as unknown as Record<string, unknown>,
@@ -113,18 +115,24 @@ export const Box = forwardRef(function Box(props: BoxProps, ref: PolymorphicRef<
   if (padding !== undefined) {
     style.padding = resolveToken("space", padding, "padding");
     tokens.push(`space.${padding}`);
+    tokenUsages.push(`space.${padding}|${cssPropertyName("padding")}`);
   }
   if (paddingInline !== undefined) {
     style.paddingInline = resolveToken("space", paddingInline, "paddingInline");
     tokens.push(`space.${paddingInline}`);
+    tokenUsages.push(`space.${paddingInline}|${cssPropertyName("paddingInline")}`);
   }
   if (paddingBlock !== undefined) {
     style.paddingBlock = resolveToken("space", paddingBlock, "paddingBlock");
     tokens.push(`space.${paddingBlock}`);
+    tokenUsages.push(`space.${paddingBlock}|${cssPropertyName("paddingBlock")}`);
   }
 
   if (background !== undefined || stateBridge?.background) {
-    if (background !== undefined) tokens.push(`colors.${background}`);
+    if (background !== undefined) {
+      tokens.push(`colors.${background}`);
+      tokenUsages.push(`colors.${background}|${cssPropertyName("backgroundColor")}`);
+    }
     applyStateBridge(
       bridgeCtx,
       "backgroundColor",
@@ -136,7 +144,10 @@ export const Box = forwardRef(function Box(props: BoxProps, ref: PolymorphicRef<
     );
   }
   if (color !== undefined || stateBridge?.color) {
-    if (color !== undefined) tokens.push(`colors.${color}`);
+    if (color !== undefined) {
+      tokens.push(`colors.${color}`);
+      tokenUsages.push(`colors.${color}|${cssPropertyName("color")}`);
+    }
     applyStateBridge(
       bridgeCtx,
       "color",
@@ -151,6 +162,7 @@ export const Box = forwardRef(function Box(props: BoxProps, ref: PolymorphicRef<
   if (radius !== undefined) {
     style.borderRadius = resolveToken("radius", radius, "radius");
     tokens.push(`radius.${radius}`);
+    tokenUsages.push(`radius.${radius}|${cssPropertyName("borderRadius")}`);
   }
 
   if (border === "none" || border !== undefined || stateBridge?.border) {
@@ -160,6 +172,7 @@ export const Box = forwardRef(function Box(props: BoxProps, ref: PolymorphicRef<
     } else if (border !== undefined) {
       restingBorder = resolveToken("border", border, "border");
       tokens.push(`border.${border}`);
+      tokenUsages.push(`border.${border}|${cssPropertyName("border")}`);
     }
     applyStateBridge(
       bridgeCtx,
@@ -177,9 +190,10 @@ export const Box = forwardRef(function Box(props: BoxProps, ref: PolymorphicRef<
   } else if (shadow !== undefined) {
     style.boxShadow = resolveToken("shadow", shadow, "shadow");
     tokens.push(`shadow.${shadow}`);
+    tokenUsages.push(`shadow.${shadow}|${cssPropertyName("boxShadow")}`);
   }
 
-  const sizeCtx = { classes, style, tokens, resolveToken };
+  const sizeCtx = { classes, style, tokens, tokenUsages, resolveToken };
   applyDimension(sizeCtx, "width", width);
   applyDimension(sizeCtx, "height", height);
   applyBoundDimension(sizeCtx, "minWidth", minWidth);
@@ -237,7 +251,15 @@ export const Box = forwardRef(function Box(props: BoxProps, ref: PolymorphicRef<
       style={finalStyle}
       {...rest}
       {...debugAttributes(
-        { primitive: "Box", classes, tokens, stateTokens, stateSuppressed, unsafeCssCount },
+        {
+          primitive: "Box",
+          classes,
+          tokens,
+          tokenUsages,
+          stateTokens,
+          stateSuppressed,
+          unsafeCssCount,
+        },
         rest,
         diagnostics,
       )}

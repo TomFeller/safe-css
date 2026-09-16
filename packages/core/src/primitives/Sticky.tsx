@@ -3,6 +3,7 @@ import { cx } from "../style/cx";
 import { mergeUnsafeCss } from "../style/mergeUnsafeCss";
 import { useTokenResolver } from "../style/useResolvedToken";
 import { debugAttributes } from "./internal/debugAttributes";
+import { cssPropertyName } from "./internal/tokenUsage";
 import {
   DEFAULT_TAG,
   type PolymorphicComponent,
@@ -52,18 +53,22 @@ export const Sticky = forwardRef(function Sticky(
 
   const style: CSSProperties = {};
   const tokens: string[] = [];
+  const tokenUsages: string[] = [];
   const classes = ["fw-Sticky"];
 
   const offsetVar = resolveToken("space", offset, "offset");
   if (edge === "top") {
     style.insetBlockStart = offsetVar;
+    tokenUsages.push(`space.${offset}|${cssPropertyName("insetBlockStart")}`);
   } else {
     style.insetBlockEnd = offsetVar;
+    tokenUsages.push(`space.${offset}|${cssPropertyName("insetBlockEnd")}`);
   }
   tokens.push(`space.${offset}`);
 
   style.zIndex = resolveToken("layer", layer, "layer");
   tokens.push(`layer.${layer}`);
+  tokenUsages.push(`layer.${layer}|${cssPropertyName("zIndex")}`);
 
   const { style: finalStyle, unsafeCssCount } = mergeUnsafeCss(
     style,
@@ -79,7 +84,7 @@ export const Sticky = forwardRef(function Sticky(
       style={finalStyle}
       {...rest}
       {...debugAttributes(
-        { primitive: "Sticky", classes, tokens, unsafeCssCount },
+        { primitive: "Sticky", classes, tokens, tokenUsages, unsafeCssCount },
         rest,
         diagnostics,
       )}

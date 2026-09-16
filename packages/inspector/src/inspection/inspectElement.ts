@@ -9,6 +9,11 @@ import {
   readUnsafeCssCount,
   stateLabel,
 } from "./metadata";
+import {
+  buildTokenUsageLookup,
+  resolveTokenUsageProperties,
+  type TokenUsageLookup,
+} from "./tokenUsages";
 import { collectAncestry } from "./ancestry";
 import { parseTokenIdentity } from "../tokens/parseToken";
 import { tokenToCssVariable } from "../tokens/tokenVariable";
@@ -17,7 +22,7 @@ import {
   resolveTokenValue,
   type VariableLookup,
 } from "../tokens/tokenValue";
-import { buildDependencyTree, extractFwVariableReferences } from "../tokens/dependencies";
+import { buildDependencyTree } from "../tokens/dependencies";
 import { detectUnsafeCss } from "../unsafe/detectUnsafeCss";
 import type {
   ExternalHooksInfo,
@@ -30,59 +35,11 @@ import type {
   InteractionStateProperty,
 } from "../types";
 
-/**
- * Every inline-style CSS property on `element` whose value references
- * `cssVariable` - as an exact `var(--fw-...)` reference, not a text
- * substring. Most tokens appear as a property's entire value
- * (`color: var(--fw-color-text)`), but some are embedded inside a compound
- * value (Grid's `minItemWidth` token lives inside `grid-template-columns:
- * repeat(auto-fill, minmax(var(--fw-size-...), 1fr))`), and a property can
- * reference more than one token at once (a `box-shadow` list, say) - so
- * this parses every `var(--fw-...)` reference out of the value (reusing
- * `extractFwVariableReferences`, the same parser dependency-tree building
- * uses) and checks for an exact match among them.
- *
- * Substring matching here previously caused false positives: `--fw-space-card`
- * would match inside `--fw-space-card-lg`'s own reference text, wrongly
- * attributing an unrelated token's property to `space.card`. Reusing the
- * real reference parser instead of ad hoc string matching is what rules
- * that out categorically, not just for this one case.
- *
- * An empty result means "Unknown" in the panel - deliberately never guessed.
- */
-/**
- * Exported (not just used internally) so Impact Analysis
- * (`impact/analyzeImpact.ts`) can reuse the exact same "does this element
- * genuinely, ordinarily use this variable" check - e.g. to tell whether a
- * token that's also state-declared has a real resting-usage path in
- * addition to its state one, rather than re-deriving a second, potentially
- * inconsistent notion of the same thing.
- */
-export function findPropertiesUsingVariable(element: HTMLElement, cssVariable: string): string[] {
-  const properties: string[] = [];
-  const style = element.style;
-
-  for (let i = 0; i < style.length; i++) {
-    const property = style.item(i);
-    if (!property) continue;
-    // Core's interactive-state bridge (v0.4) always writes an inline
-    // `--fw-state-<state>-<property>-value` custom property for every
-    // declared state x property, regardless of whether that state is
-    // currently active - that's real, but it's framework plumbing, not a
-    // genuine "used by" CSS property, and must never be shown as one in the
-    // ordinary Tokens section (it's covered separately by
-    // `interactionStates` - see `buildInteractionStates` below and
-    // `types.ts`'s `InspectedElement.tokens` doc comment).
-    if (property.startsWith("--fw-state-")) continue;
-    if (extractFwVariableReferences(style.getPropertyValue(property)).includes(cssVariable)) {
-      properties.push(property);
-    }
-  }
-
-  return properties;
-}
-
-function inspectToken(element: HTMLElement, token: string): InspectedToken {
+function inspectToken(
+  element: HTMLElement,
+  token: string,
+  tokenUsageLookup: TokenUsageLookup,
+): InspectedToken {
   const identity = parseTokenIdentity(token);
   const cssVariable = tokenToCssVariable(identity);
 
@@ -97,7 +54,7 @@ function inspectToken(element: HTMLElement, token: string): InspectedToken {
   return {
     ...identity,
     cssVariable,
-    properties: findPropertiesUsingVariable(element, cssVariable),
+    properties: resolveTokenUsageProperties(element, token, cssVariable, tokenUsageLookup),
     rawValue,
     resolvedValue,
     dependencies: dependencyTree?.children ?? [],
@@ -142,6 +99,7 @@ function stateBridgeValueVarName(
 function buildInteractionStates(
   element: HTMLElement,
   stateTokenRefs: InspectorStateTokenRef[],
+  tokenUsageLookup: TokenUsageLookup,
 ): InteractionState[] {
   const suppressionLookup = new Map<string, string>();
   for (const ref of readStateSuppressedList(element)) {
@@ -164,7 +122,7 @@ function buildInteractionStates(
     covered.add(`${ref.state}|${ref.property}`);
     pushDeclaration(ref.state, {
       property: ref.property,
-      token: inspectToken(element, ref.token),
+      token: inspectToken(element, ref.token, tokenUsageLookup),
       suppressedBy: suppressionFor(ref.state, ref.property),
     });
   }
@@ -222,6 +180,7 @@ function buildExternalHooks(element: HTMLElement): ExternalHooksInfo {
 export function inspectElement(element: HTMLElement): InspectedElement {
   const stateTokenRefs = readStateTokenList(element);
   const stateDeclaredTokenIdentities = new Set(stateTokenRefs.map((ref) => ref.token));
+  const tokenUsageLookup = buildTokenUsageLookup(element);
 
   // A token used *only* by an interactive state (no ordinary/resting CSS
   // property references it - see `findPropertiesUsingVariable`'s exclusion
@@ -230,7 +189,7 @@ export function inspectElement(element: HTMLElement): InspectedElement {
   // used both ways keeps its non-empty `properties` and stays here too -
   // see `types.ts`'s `InspectedElement.tokens` doc comment.
   const tokens = readTokenList(element)
-    .map((token) => inspectToken(element, token))
+    .map((token) => inspectToken(element, token, tokenUsageLookup))
     .filter(
       (inspected) =>
         !(stateDeclaredTokenIdentities.has(inspected.token) && inspected.properties.length === 0),
@@ -244,7 +203,7 @@ export function inspectElement(element: HTMLElement): InspectedElement {
     variants: readVariants(element),
     ancestry: collectAncestry(element),
     tokens,
-    interactionStates: buildInteractionStates(element, stateTokenRefs),
+    interactionStates: buildInteractionStates(element, stateTokenRefs, tokenUsageLookup),
     externalHooks: buildExternalHooks(element),
     unsafeCss: detectUnsafeCss(element, readUnsafeCssCount(element)),
   };

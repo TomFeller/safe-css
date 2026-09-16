@@ -33,6 +33,20 @@ export interface DebugMeta {
   /** Token usages declared by a recipe's interactive-state styling (see `primitives/internal/stateBridge.ts`), formatted as `state|property|token` - reported separately from `tokens` (which already includes these too, since the same token can legitimately also be used by the element's resting styling) so a consumer can tell exactly which state/property each state-declared usage belongs to. */
   stateTokens?: string[];
   /**
+   * Exact token -> rendered-CSS-property provenance for this element's
+   * *ordinary* (resting) styling, formatted as `token|property` (e.g.
+   * `"space.card|padding"`). Recorded by each primitive at the same call
+   * site that resolves the token into a style value - see
+   * `internal/tokenUsage.ts` - so a consumer never has to reverse-engineer
+   * this mapping by scanning `element.style` for `var(--fw-...)`
+   * references, which is unreliable for shorthand CSS properties (`padding`,
+   * `border`, ...) in a real browser. Deliberately excludes any token whose
+   * only usage is a declared interactive state (see `stateTokens` above) -
+   * those are real dependencies, but not an ordinary/resting CSS property
+   * usage, and must not be reported as one.
+   */
+  tokenUsages?: string[];
+  /**
    * Declared interactive-state properties whose bridge is present but
    * currently ineffective on this instance because `unsafeCss` sets the same
    * rendered CSS property (see `Box.tsx`'s use of `STATE_BRIDGE_UNSAFE_CSS_KEYS`
@@ -56,6 +70,7 @@ export const PRIMITIVE_RESERVED_ATTRIBUTES = [
   "data-fw-primitive",
   "data-fw-classes",
   "data-fw-tokens",
+  "data-fw-token-usages",
   "data-fw-state-tokens",
   "data-fw-state-suppressed",
   "data-fw-unsafe-css",
@@ -83,15 +98,15 @@ export const RESERVED_DATA_ATTRIBUTES = [
 ] as const;
 
 /**
- * Dev-only `data-fw-*` attributes describing which primitive, theme tokens,
- * and `unsafeCss` usage produced an element. This is intentionally the
- * entire per-primitive "traceability" surface for v0.1 (recipes add their
- * own `data-fw-recipe`/`data-fw-variant` separately - see
- * `recipes/defineRecipe.ts`): it costs nothing at runtime in production (the
- * attributes are simply omitted) and is enough to inspect an element's
- * styling provenance in devtools today, while giving a future "blast
- * radius" tool (see docs/architecture.md) a real data source to read
- * without any redesign.
+ * Dev-only `data-fw-*` attributes describing which primitive, theme tokens
+ * (including their exact rendered CSS property provenance), and `unsafeCss`
+ * usage produced an element. This is the entire per-primitive
+ * "traceability" surface (recipes add their own `data-fw-recipe`/
+ * `data-fw-variant` separately - see `recipes/defineRecipe.ts`): it costs
+ * nothing at runtime in production (the attributes are simply omitted) and
+ * is enough to inspect an element's styling provenance in devtools today,
+ * and is exactly the data source `@safe-css/inspector`'s Impact Analysis
+ * reads without any redesign (see docs/architecture.md#traceability-metadata).
  *
  * Centralized here rather than reimplemented per primitive, so the metadata
  * model (which attributes exist, when they're included) has exactly one
@@ -100,12 +115,12 @@ export const RESERVED_DATA_ATTRIBUTES = [
  * they collide with the reserved namespace.
  *
  * `data-fw-*` is reserved: a consumer-supplied `data-fw-primitive="..."`
- * must never silently win over the framework's own value, since a future
- * Inspector/blast-radius tool will trust these attributes unconditionally.
- * Correctness is guaranteed by *call-site spread order*, not by anything
- * here - every primitive spreads `{...rest}` before `{...debugAttributes(...)}`,
- * so the framework's own attributes are always applied last. This function's
- * job is narrower: notice when that would have mattered, and say so.
+ * must never silently win over the framework's own value, since the
+ * Inspector trusts these attributes unconditionally. Correctness is
+ * guaranteed by *call-site spread order*, not by anything here - every
+ * primitive spreads `{...rest}` before `{...debugAttributes(...)}`, so the
+ * framework's own attributes are always applied last. This function's job is
+ * narrower: notice when that would have mattered, and say so.
  */
 export function debugAttributes(
   meta: DebugMeta,
@@ -131,6 +146,12 @@ export function debugAttributes(
     // `states.hover.background` both set to the same token name), which
     // would otherwise double-list it here.
     attrs["data-fw-tokens"] = [...new Set(meta.tokens)].join(" ");
+  }
+  if (meta.tokenUsages && meta.tokenUsages.length > 0) {
+    // Deduplicated the same way `data-fw-tokens` is above - a token/property
+    // pair recorded from more than one call site (shouldn't normally happen,
+    // but costs nothing to guard) must not appear twice.
+    attrs["data-fw-token-usages"] = [...new Set(meta.tokenUsages)].join(" ");
   }
   if (meta.stateTokens && meta.stateTokens.length > 0) {
     attrs["data-fw-state-tokens"] = meta.stateTokens.join(" ");

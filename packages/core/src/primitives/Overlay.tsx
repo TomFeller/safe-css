@@ -10,6 +10,7 @@ import {
   type OverlayAnchor,
   type OverlayPlacement,
 } from "./internal/overlayAnchors";
+import { cssPropertyName } from "./internal/tokenUsage";
 import {
   DEFAULT_TAG,
   type PolymorphicComponent,
@@ -118,6 +119,7 @@ const OverlayItem = forwardRef(function OverlayItem(
 
   const style: CSSProperties = {};
   const tokens: string[] = [];
+  const tokenUsages: string[] = [];
 
   const geometry = OVERLAY_ANCHOR_GEOMETRY[anchor];
 
@@ -143,8 +145,13 @@ const OverlayItem = forwardRef(function OverlayItem(
       inlineOffset !== undefined ? "inlineOffset" : "offset",
     );
     tokens.push(`space.${effectiveInlineOffset}`);
-    if (geometry.inline === "start") style.insetInlineStart = inlineOffsetVar;
-    else style.insetInlineEnd = inlineOffsetVar;
+    if (geometry.inline === "start") {
+      style.insetInlineStart = inlineOffsetVar;
+      tokenUsages.push(`space.${effectiveInlineOffset}|${cssPropertyName("insetInlineStart")}`);
+    } else {
+      style.insetInlineEnd = inlineOffsetVar;
+      tokenUsages.push(`space.${effectiveInlineOffset}|${cssPropertyName("insetInlineEnd")}`);
+    }
   }
 
   if (geometry.block === "center") {
@@ -160,12 +167,18 @@ const OverlayItem = forwardRef(function OverlayItem(
       blockOffset !== undefined ? "blockOffset" : "offset",
     );
     tokens.push(`space.${effectiveBlockOffset}`);
-    if (geometry.block === "start") style.insetBlockStart = blockOffsetVar;
-    else style.insetBlockEnd = blockOffsetVar;
+    if (geometry.block === "start") {
+      style.insetBlockStart = blockOffsetVar;
+      tokenUsages.push(`space.${effectiveBlockOffset}|${cssPropertyName("insetBlockStart")}`);
+    } else {
+      style.insetBlockEnd = blockOffsetVar;
+      tokenUsages.push(`space.${effectiveBlockOffset}|${cssPropertyName("insetBlockEnd")}`);
+    }
   }
 
   style.zIndex = resolveToken("layer", layer, "layer");
   tokens.push(`layer.${layer}`);
+  tokenUsages.push(`layer.${layer}|${cssPropertyName("zIndex")}`);
 
   const classes = ["fw-OverlayItem", overlayAnchorClassName(anchor, placement)];
 
@@ -183,7 +196,7 @@ const OverlayItem = forwardRef(function OverlayItem(
       style={finalStyle}
       {...rest}
       {...debugAttributes(
-        { primitive: "Overlay.Item", tokens, classes, unsafeCssCount },
+        { primitive: "Overlay.Item", tokens, tokenUsages, classes, unsafeCssCount },
         rest,
         diagnostics,
       )}
